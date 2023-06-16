@@ -1,5 +1,5 @@
 use {
-    makepad_code_editor::{code_editor, CodeEditor, state::SessionId},
+    makepad_code_editor::{code_editor, state::SessionId, CodeEditor},
     makepad_widgets::*,
 };
 
@@ -30,12 +30,21 @@ impl AppMain for App {
             let mut cx = Cx2d::new(cx, event);
             while let Some(next) = self.ui.draw_widget(&mut cx).hook_widget() {
                 if next == self.ui.get_widget(id!(code_editor)) {
-                    self.code_editor
-                        .draw(&mut cx, &self.state.code_editor, self.state.session_id);
+                    self.code_editor.draw(
+                        &mut cx,
+                        &mut self.state.code_editor,
+                        self.state.session_id,
+                    );
                 }
             }
             return;
         }
+        self.code_editor.handle_event(
+            cx,
+            &mut self.state.code_editor,
+            self.state.session_id,
+            event,
+        );
     }
 }
 

@@ -1,6 +1,6 @@
 use {
     crate::{
-        state::{Block, Inline, Line, SessionId, Token},
+        state::{Block, Fold, Inline, Line, SessionId, Token},
         State,
     },
     makepad_widgets::*,
@@ -30,7 +30,7 @@ pub struct CodeEditor {
 }
 
 impl CodeEditor {
-    pub fn draw<'a>(&mut self, cx: &mut Cx2d<'_>, state: &'a State, session_id: SessionId) {
+    pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
             x: column_width,
             y: row_height,
@@ -41,10 +41,45 @@ impl CodeEditor {
             token_color: self.token_color,
             row_y: 0.0,
             column_index: 0,
+            fold: Fold::default(),
             row_height,
             column_width,
         }
         .draw(cx, state, session_id);
+    }
+
+    pub fn handle_event(
+        &mut self,
+        cx: &mut Cx,
+        state: &mut State,
+        session_id: SessionId,
+        event: &Event,
+    ) {
+        match event {
+            Event::KeyDown(KeyEvent {
+                key_code: KeyCode::Alt,
+                ..
+            }) => {
+                for line_index in 0..state.line_count(session_id) {
+                    if state.line(session_id, line_index).text().chars().take_while(|char| char.is_whitespace()).count() >= 8 {
+                        state.fold_line(session_id, line_index, 8);
+                    }
+                }
+                cx.redraw_all();
+            }
+            Event::KeyUp(KeyEvent {
+                key_code: KeyCode::Alt,
+                ..
+            }) => {
+                for line_index in 0..state.line_count(session_id) {
+                    if state.line(session_id, line_index).text().chars().take_while(|char| char.is_whitespace()).count() >= 8 {
+                        state.unfold_line(session_id, line_index, 8);
+                    }
+                }
+                cx.redraw_all();
+            }
+            _ => {}
+        }
     }
 }
 
@@ -54,65 +89,83 @@ struct DrawContext<'a> {
     token_color: Vec4,
     row_y: f64,
     column_index: usize,
+    fold: Fold,
     row_height: f64,
     column_width: f64,
 }
 
 impl<'a> DrawContext<'a> {
     fn position(&self) -> DVec2 {
+        let column_count_before = self.column_index.min(self.fold.column_index);
+        let column_count_after = self.column_index - column_count_before;
         DVec2 {
-            x: self.column_index as f64 * self.column_width,
+            x: column_count_before as f64 * self.column_width
+                + column_count_after as f64 * self.fold.scale * self.column_width,
             y: self.row_y,
         }
     }
 
-    fn draw(&mut self, cx: &mut Cx2d<'_>, state: &State, session_id: SessionId) {
+    fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         for block in state.blocks(session_id) {
             self.draw_block(cx, block);
+        }
+        if state.update_fold_state(session_id) {
+            cx.redraw_all();
         }
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
         match block {
-            Block::Inlay(inlay) => self.draw_block_inlay(cx, inlay),
             Block::Line(line) => self.draw_line(cx, line),
+            Block::Inlay(inlay) => self.draw_block_inlay(cx, inlay),
         }
     }
 
-    fn draw_block_inlay(&mut self, cx: &mut Cx2d<'_>, inlay: &str) {
-        self.draw_text.color = self.inlay_color;
-        self.draw_text.draw_abs(cx, self.position(), inlay);
-        self.row_y += self.row_height;
-    }
-
     fn draw_line(&mut self, cx: &mut Cx2d<'_>, line: Line<'_>) {
+        use crate::state::FoldState;
+
+        match line.fold_state() {
+            FoldState::Folded => return,
+            FoldState::Folding(fold) | FoldState::Unfolding(fold) => self.fold = fold,
+            FoldState::Unfolded => {}
+        }
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
         self.column_index = 0;
-        self.row_y += self.row_height;
+        self.row_y += self.fold.scale * self.row_height;
+        self.fold = Fold::default();
     }
 
     fn draw_inline(&mut self, cx: &mut Cx2d<'_>, inline: Inline) {
         match inline {
-            Inline::Inlay(inlay) => self.draw_inline_inlay(cx, inlay),
             Inline::Token(token) => self.draw_token(cx, token),
+            Inline::Inlay(inlay) => self.draw_inline_inlay(cx, inlay),
         }
-    }
-
-    fn draw_inline_inlay(&mut self, cx: &mut Cx2d<'_>, inlay: &str) {
-        use crate::StrExt;
-
-        self.draw_text.color = self.inlay_color;
-        self.draw_text.draw_abs(cx, self.position(), inlay);
-        self.column_index += inlay.column_count();
     }
 
     fn draw_token(&mut self, cx: &mut Cx2d<'_>, token: Token<'_>) {
         use crate::StrExt;
 
+        self.draw_text.font_scale = self.fold.scale;
         self.draw_text.color = self.token_color;
         self.draw_text.draw_abs(cx, self.position(), token.text);
         self.column_index += token.text.column_count();
+    }
+
+    fn draw_inline_inlay(&mut self, cx: &mut Cx2d<'_>, inlay: &str) {
+        use crate::StrExt;
+
+        self.draw_text.font_scale = self.fold.scale;
+        self.draw_text.color = self.inlay_color;
+        self.draw_text.draw_abs(cx, self.position(), inlay);
+        self.column_index += inlay.column_count();
+    }
+
+    fn draw_block_inlay(&mut self, cx: &mut Cx2d<'_>, inlay: &str) {
+        self.draw_text.font_scale = self.fold.scale;
+        self.draw_text.color = self.inlay_color;
+        self.draw_text.draw_abs(cx, self.position(), inlay);
+        self.row_y += self.row_height;
     }
 }
