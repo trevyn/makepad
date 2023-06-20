@@ -1,17 +1,17 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io,
-    path::{Path, PathBuf},
-    slice::Iter,
+use {
+    crate::{arena::Id, Arena},
+    std::{
+        collections::{HashMap, HashSet},
+        io,
+        path::{Path, PathBuf},
+        slice::Iter,
+    }
 };
 
 #[derive(Debug, Default)]
 pub struct State {
-    document_id: usize,
-    documents: HashMap<DocumentId, Document>,
-    document_ids: HashMap<PathBuf, DocumentId>,
-    session_id: usize,
-    sessions: HashMap<SessionId, Session>,
+    documents: Arena<Document>,
+    sessions: Arena<Session>,
 }
 
 impl State {
@@ -23,80 +23,64 @@ impl State {
         &mut self,
         path: Option<impl AsRef<Path> + Into<PathBuf>>,
     ) -> io::Result<SessionId> {
-        let document_id = path
-            .as_ref()
-            .and_then(|path| self.document_ids.get(path.as_ref()).copied())
-            .map_or_else(|| self.open_document(path), |document| Ok(document))?;
-        let session_id = {
-            let session_id = SessionId(self.session_id);
-            self.session_id += 1;
-            session_id
-        };
-        let document = &self.documents[&document_id];
-        let inline_inlays: Vec<_> = (0..document.text.len())
-            .map(|_| {
-                vec![
-                    (20, Inlay::new("X Y Z")),
-                    (40, Inlay::new("X Y Z")),
-                    (60, Inlay::new("X Y Z")),
-                    (80, Inlay::new("X Y Z")),
-                ]
-            })
-            .collect();
-        let break_byte_indices = document
-            .text
-            .iter()
-            .enumerate()
-            .map(|_| Vec::new())
-            .collect();
-        self.sessions.insert(
-            session_id,
-            Session {
-                max_column_index: None,
-                document_id,
-                inline_inlays,
-                break_byte_indices,
-                folded_lines: HashSet::new(),
-                folding_lines: HashMap::new(),
-                new_folding_lines: HashMap::new(),
-                unfolding_lines: HashMap::new(),
-                new_unfolding_lines: HashMap::new(),
-                block_inlays: [
-                    (10, Inlay::new("X Y Z")),
-                    (20, Inlay::new("X Y Z")),
-                    (30, Inlay::new("X Y Z")),
-                    (40, Inlay::new("X Y Z")),
-                ]
-                .into(),
-            },
-        );
-        self.documents
-            .get_mut(&document_id)
-            .unwrap()
+        let document_id = self.open_document(path)?;
+        let document = &self.documents[document_id];
+        let session_id= self.sessions.insert(Session {
+            max_column_index: None,
+            document_id,
+            inline_inlays: (0..document.text.len())
+                .map(|_| {
+                    vec![
+                        (20, Inlay::new("X Y Z")),
+                        (40, Inlay::new("X Y Z")),
+                        (60, Inlay::new("X Y Z")),
+                        (80, Inlay::new("X Y Z")),
+                    ]
+                })
+                .collect(),
+            break_byte_indices: document
+                .text
+                .iter()
+                .enumerate()
+                .map(|_| Vec::new())
+                .collect(),
+            folded_lines: HashSet::new(),
+            folding_lines: HashMap::new(),
+            new_folding_lines: HashMap::new(),
+            unfolding_lines: HashMap::new(),
+            new_unfolding_lines: HashMap::new(),
+            block_inlays: vec![
+                (10, Inlay::new("X Y Z")),
+                (20, Inlay::new("X Y Z")),
+                (30, Inlay::new("X Y Z")),
+                (40, Inlay::new("X Y Z")),
+            ],
+        });
+        self.documents[document_id]
             .session_ids
             .insert(session_id);
-        Ok(session_id)
+        Ok(SessionId(session_id))
     }
 
-    pub fn close_session(&mut self, session_id: SessionId) {
-        let document_id = self.sessions[&session_id].document_id;
-        let document = self.documents.get_mut(&document_id).unwrap();
+    pub fn close_session(&mut self, SessionId(session_id): SessionId) {
+        let document_id = self.sessions[session_id].document_id;
+        let document = &mut self.documents[document_id];
         document.session_ids.remove(&session_id);
         if document.session_ids.is_empty() {
             self.close_document(document_id);
         }
-        self.sessions.remove(&session_id);
+        self.sessions.remove(session_id);
     }
 
-    pub fn line_count(&self, session_id: SessionId) -> usize {
-        self.documents[&self.sessions[&session_id].document_id]
+    pub fn line_count(&self, SessionId(session_id): SessionId) -> usize {
+        self.documents[self.sessions[session_id].document_id]
             .text
             .len()
     }
 
-    pub fn line(&self, session_id: SessionId, line_index: usize) -> Line<'_> {
-        let session = &self.sessions[&session_id];
-        let document = &self.documents[&session.document_id];
+    pub fn line(&self, SessionId(session_id): SessionId, line_index: usize) -> Line<'_> {
+        let session = &self.sessions[session_id];
+        let document = &self.documents[session.document_id];
         Line {
             text: &document.text[line_index],
             token_infos: &document.token_infos[line_index],
@@ -111,9 +95,9 @@ impl State {
         }
     }
 
-    pub fn lines(&self, session_id: SessionId) -> Lines<'_> {
-        let session = &self.sessions[&session_id];
-        let document = &self.documents[&session.document_id];
+    pub fn lines(&self, SessionId(session_id): SessionId) -> Lines<'_> {
+        let session = &self.sessions[session_id];
+        let document = &self.documents[session.document_id];
         Lines {
             line_index: 0,
             text: document.text.iter(),
@@ -126,26 +110,26 @@ impl State {
         }
     }
 
-    pub fn blocks(&self, session_id: SessionId) -> Blocks<'_> {
+    pub fn blocks(&self, SessionId(session_id): SessionId) -> Blocks<'_> {
         Blocks {
-            lines: self.lines(session_id),
+            lines: self.lines(SessionId(session_id)),
             line_index: 0,
-            block_inlays: self.sessions[&session_id].block_inlays.iter(),
+            block_inlays: self.sessions[session_id].block_inlays.iter(),
         }
     }
 
-    pub fn set_max_column_index(&mut self, session_id: SessionId, max_column_index: Option<usize>) {
-        let session = self.sessions.get_mut(&session_id).unwrap();
+    pub fn set_max_column_index(&mut self, SessionId(session_id): SessionId, max_column_index: Option<usize>) {
+        let session = &mut self.sessions[session_id];
         if session.max_column_index != max_column_index {
             session.max_column_index = max_column_index;
-            for line_index in 0..self.line_count(session_id) {
-                self.wrap_line(session_id, line_index);
+            for line_index in 0..self.line_count(SessionId(session_id)) {
+                self.wrap_line(SessionId(session_id), line_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, session_id: SessionId, line_index: usize, column_index: usize) {
-        let session = self.sessions.get_mut(&session_id).unwrap();
+    pub fn fold_line(&mut self, SessionId(session_id): SessionId, line_index: usize, column_index: usize) {
+        let session = &mut self.sessions[session_id];
         let scale = if let Some(unfolding_lines) = session.unfolding_lines.remove(&line_index) {
             unfolding_lines.scale
         } else if !session.folded_lines.contains(&line_index)
@@ -164,8 +148,8 @@ impl State {
         );
     }
 
-    pub fn unfold_line(&mut self, session_id: SessionId, line_index: usize, column_index: usize) {
-        let session = self.sessions.get_mut(&session_id).unwrap();
+    pub fn unfold_line(&mut self, SessionId(session_id): SessionId, line_index: usize, column_index: usize) {
+        let session = &mut self.sessions[session_id];
         let scale = if let Some(folding_lines) = session.folding_lines.remove(&line_index) {
             folding_lines.scale
         } else if session.folded_lines.remove(&line_index) {
@@ -182,10 +166,10 @@ impl State {
         );
     }
 
-    pub fn update_fold_state(&mut self, session_id: SessionId) -> bool {
+    pub fn update_fold_state(&mut self, SessionId(session_id): SessionId) -> bool {
         use std::mem;
 
-        let session = self.sessions.get_mut(&session_id).unwrap();
+        let session = &mut self.sessions[session_id];
         if session.folding_lines.is_empty() && session.unfolding_lines.is_empty() {
             return false;
         }
@@ -218,14 +202,9 @@ impl State {
     fn open_document(
         &mut self,
         path: Option<impl AsRef<Path> + Into<PathBuf>>,
-    ) -> io::Result<DocumentId> {
+    ) -> io::Result<Id<Document>> {
         use std::fs;
 
-        let document_id = {
-            let document_id = DocumentId(self.document_id);
-            self.document_id += 1;
-            document_id
-        };
         let text = {
             let mut text: Vec<_> = String::from_utf8_lossy(
                 &path
@@ -241,42 +220,33 @@ impl State {
             text
         };
         let token_infos = text.iter().map(|text| tokenize(text)).collect();
-        self.documents.insert(
-            document_id,
+        Ok(self.documents.insert(
             Document {
                 session_ids: HashSet::new(),
-                path: path.map(|path| path.into()),
                 text,
                 token_infos,
             },
-        );
-        if let Some(path) = &self.documents[&document_id].path {
-            self.document_ids.insert(path.clone(), document_id);
-        }
-        Ok(document_id)
+        ))
     }
 
-    fn close_document(&mut self, document_id: DocumentId) {
-        if let Some(path) = &self.documents[&document_id].path {
-            self.document_ids.remove(path);
-        }
-        self.documents.remove(&document_id);
+    fn close_document(&mut self, document_id: Id<Document>) {
+        self.documents.remove(document_id);
     }
 
-    fn wrap_line(&mut self, session_id: SessionId, line_index: usize) {
+    fn wrap_line(&mut self, SessionId(session_id): SessionId, line_index: usize) {
         let break_byte_indices =
-            if let Some(max_column_index) = self.sessions[&session_id].max_column_index {
-                wrap(self.line(session_id, line_index), max_column_index)
+            if let Some(max_column_index) = self.sessions[session_id].max_column_index {
+                wrap(self.line(SessionId(session_id), line_index), max_column_index)
             } else {
                 Vec::new()
             };
-        let session = self.sessions.get_mut(&session_id).unwrap();
+        let session = &mut self.sessions[session_id];
         session.break_byte_indices[line_index] = break_byte_indices;
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct SessionId(usize);
+pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Inlay {
@@ -562,7 +532,7 @@ pub enum Block<'a> {
 #[derive(Debug)]
 struct Session {
     max_column_index: Option<usize>,
-    document_id: DocumentId,
+    document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, Inlay)>>,
     break_byte_indices: Vec<Vec<usize>>,
     folded_lines: HashSet<usize>,
@@ -573,13 +543,9 @@ struct Session {
     block_inlays: Vec<(usize, Inlay)>,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-struct DocumentId(usize);
-
 #[derive(Debug)]
 struct Document {
-    session_ids: HashSet<SessionId>,
-    path: Option<PathBuf>,
+    session_ids: HashSet<Id<Session>>,
     text: Vec<String>,
     token_infos: Vec<Vec<TokenInfo>>,
 }
