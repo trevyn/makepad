@@ -1,6 +1,6 @@
 use {
     crate::{
-        state::{Block, Fold, Inline, Line, SessionId, Token},
+        state::{Block, FoldingState, Inline, Line, SessionId, Token},
         State,
     },
     makepad_widgets::*,
@@ -42,8 +42,7 @@ impl CodeEditor {
             x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
-        state.set_max_column_index(
-            session_id,
+        state.focus_mut(session_id).set_wrap_column_index(
             Some((cx.turtle().rect().size.x / column_width as f64) as usize),
         );
         DrawContext {
@@ -53,7 +52,7 @@ impl CodeEditor {
             row_y: 0.0,
             column_index: 0,
             inlay: false,
-            fold: Fold::default(),
+            fold: FoldingState::default(),
             row_height,
             column_width,
         }
@@ -72,16 +71,16 @@ impl CodeEditor {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                for line_index in 0..state.line_count(session_id) {
-                    if state
-                        .line(session_id, line_index)
+                let mut focus = state.focus_mut(session_id);
+                for line_index in 0..focus.line_count() {
+                    if focus.line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        state.fold_line(session_id, line_index, 8);
+                        focus.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -90,16 +89,17 @@ impl CodeEditor {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                for line_index in 0..state.line_count(session_id) {
-                    if state
-                        .line(session_id, line_index)
+                let mut focus = state.focus_mut(session_id);
+                for line_index in 0..focus.line_count() {
+                    if focus
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        state.unfold_line(session_id, line_index, 8);
+                        focus.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -116,7 +116,7 @@ struct DrawContext<'a> {
     row_y: f64,
     column_index: usize,
     inlay: bool,
-    fold: Fold,
+    fold: FoldingState,
     row_height: f64,
     column_width: f64,
 }
@@ -135,10 +135,11 @@ impl<'a> DrawContext<'a> {
     }
 
     fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        for block in state.blocks(session_id) {
+        let mut focus = state.focus_mut(session_id);
+        for block in focus.blocks() {
             self.draw_block(cx, block);
         }
-        if state.update_fold_state(session_id) {
+        if focus.update_fold_state() {
             cx.redraw_all();
         }
     }
@@ -166,7 +167,7 @@ impl<'a> DrawContext<'a> {
         }
         self.column_index = 0;
         self.row_y += self.fold.scale * self.row_height;
-        self.fold = Fold::default();
+        self.fold = FoldingState::default();
     }
 
     fn draw_inline(&mut self, cx: &mut Cx2d<'_>, inline: Inline) {
@@ -196,6 +197,6 @@ impl<'a> DrawContext<'a> {
         if token.kind != TokenKind::Whitespace {
             self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.column_index += token.text.column_count();
+        self.column_index += token.text.width();
     }
 }

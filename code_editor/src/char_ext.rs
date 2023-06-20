@@ -1,9 +1,9 @@
 pub trait CharExt {
-    fn column_count(self) -> usize;
+    fn width(self) -> usize;
 }
 
 impl CharExt for char {
-    fn column_count(self) -> usize {
+    fn width(self) -> usize {
         if self == '\t' {
             4
         } else {
