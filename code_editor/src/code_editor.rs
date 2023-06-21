@@ -117,7 +117,7 @@ impl CodeEditor {
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_index, 8);
+                        view.fold(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -136,7 +136,7 @@ impl CodeEditor {
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_index, 8);
+                        view.unfold(line_index, 8);
                     }
                 }
                 cx.redraw_all();

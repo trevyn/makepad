@@ -32,8 +32,10 @@ impl State {
     ) -> io::Result<SessionId> {
         let document_id = self.open_document(path)?;
         let document = &self.documents[document_id];
-        let session_id = self.sessions.insert(Session {
+        let session_id = SessionId(self.sessions.insert(Session {
             wrap_column_index: None,
+            height: (0..document.text.len())
+            .map(|_| 0.0).collect(),
             document_id,
             inline_inlays: (0..document.text.len())
                 .map(|_| {
@@ -62,19 +64,23 @@ impl State {
                 (30, BlockInlay::new("XXX YYY ZZZ")),
                 (40, BlockInlay::new("XXX YYY ZZZ")),
             ],
-        });
-        self.documents[document_id].session_ids.insert(session_id);
-        Ok(SessionId(session_id))
+        }));
+        self.documents[document_id].session_ids.insert(session_id.0);
+        let mut view = self.view_mut(session_id);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
+        }
+        Ok(session_id)
     }
 
-    pub fn close_session(&mut self, SessionId(session_id): SessionId) {
-        let document_id = self.sessions[session_id].document_id;
+    pub fn close_session(&mut self, session_id: SessionId) {
+        let document_id = self.sessions[session_id.0].document_id;
         let document = &mut self.documents[document_id];
-        document.session_ids.remove(&session_id);
+        document.session_ids.remove(&session_id.0);
         if document.session_ids.is_empty() {
             self.close_document(document_id);
         }
-        self.sessions.remove(session_id);
+        self.sessions.remove(session_id.0);
     }
 
     pub fn view(&self, session_id: SessionId) -> View<'_> {
@@ -82,6 +88,7 @@ impl State {
         let document = &self.documents[session.document_id];
         View {
             wrap_column_index: session.wrap_column_index,
+            height: &session.height,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -98,6 +105,7 @@ impl State {
         let document = &mut self.documents[session.document_id];
         ViewMut {
             wrap_column_index: &mut session.wrap_column_index,
+            height: &mut session.height,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -150,6 +158,7 @@ pub struct SessionId(Id<Session>);
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
     wrap_column_index: Option<usize>,
+    height: &'a [f64],
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -167,6 +176,7 @@ impl<'a> View<'a> {
 
     pub fn line(&self, line_index: usize) -> Line<'a> {
         Line {
+            height: self.height[line_index],
             text: &self.text[line_index],
             token_infos: &self.token_infos[line_index],
             inlays: &self.inline_inlays[line_index],
@@ -176,7 +186,10 @@ impl<'a> View<'a> {
     }
 
     pub fn lines(&self) -> Lines<'a> {
-        Lines::new(
+        use crate::lines;
+
+        lines::lines(
+            self.height.iter(),
             self.text.iter(),
             self.token_infos.iter(),
             self.inline_inlays.iter(),
@@ -197,6 +210,7 @@ impl<'a> View<'a> {
 #[derive(Debug)]
 pub struct ViewMut<'a> {
     wrap_column_index: &'a mut Option<usize>,
+    height: &'a mut [f64],
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -213,6 +227,7 @@ impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
             wrap_column_index: *self.wrap_column_index,
+            height: &self.height,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -244,7 +259,7 @@ impl<'a> ViewMut<'a> {
         if *self.wrap_column_index != wrap_column_index {
             *self.wrap_column_index = wrap_column_index;
             for line_index in 0..self.line_count() {
-                self.wrap_line(line_index);
+                self.wrap(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 block_inlay.wrap(wrap_column_index);
@@ -252,7 +267,7 @@ impl<'a> ViewMut<'a> {
         }
     }
 
-    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+    pub fn fold(&mut self, line_index: usize, column_index: usize) {
         let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
         } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
@@ -267,9 +282,10 @@ impl<'a> ViewMut<'a> {
                 scale,
             },
         );
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+    pub fn unfold(&mut self, line_index: usize, column_index: usize) {
         let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
         } else if self.folded.remove(&line_index) {
@@ -284,6 +300,7 @@ impl<'a> ViewMut<'a> {
                 scale,
             },
         );
+        self.update_height(line_index);
     }
 
     pub fn update_fold_state(&mut self) -> bool {
@@ -312,10 +329,13 @@ impl<'a> ViewMut<'a> {
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
+        }
         true
     }
 
-    fn wrap_line(&mut self, line_index: usize) {
+    fn wrap(&mut self, line_index: usize) {
         use crate::wrap;
 
         self.breaks[line_index] = Vec::new();
@@ -324,12 +344,19 @@ impl<'a> ViewMut<'a> {
         } else {
             Vec::new()
         };
+        self.update_height(line_index);
+    }
+
+    fn update_height(&mut self, line_index: usize) {
+        let line = self.line(line_index);
+        self.height[line_index] = line.fold_state.scale() * line.row_count() as f64;
     }
 }
 
 #[derive(Debug)]
 struct Session {
     wrap_column_index: Option<usize>,
+    height: Vec<f64>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,

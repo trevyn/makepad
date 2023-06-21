@@ -9,6 +9,7 @@ use {
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
     line_index: usize,
+    height: Iter<'a, f64>,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -20,6 +21,7 @@ pub struct Lines<'a> {
 
 impl<'a> Lines<'a> {
     pub(super) fn new(
+        height: Iter<'a, f64>,
         text: Iter<'a, String>,
         token_infos: Iter<'a, Vec<TokenInfo>>,
         inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -30,6 +32,7 @@ impl<'a> Lines<'a> {
     ) -> Self {
         Self {
             line_index: 0,
+            height,
             text,
             token_infos,
             inlays,
@@ -46,6 +49,7 @@ impl<'a> Iterator for Lines<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let line = Line {
+            height: *self.height.next()?,
             text: self.text.next()?,
             token_infos: self.token_infos.next()?,
             inlays: self.inlays.next()?,
@@ -64,6 +68,7 @@ impl<'a> Iterator for Lines<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub struct Line<'a> {
+    pub(super) height: f64,
     pub(super) text: &'a str,
     pub(super) token_infos: &'a [TokenInfo],
     pub(super) inlays: &'a [(usize, InlineInlay)],
@@ -78,6 +83,7 @@ impl<'a> Line<'a> {
 
     pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
+        
         let mut column_count = 0;
         let mut max_column_count = 0;
         for inline in self.inlines() {
@@ -93,7 +99,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn height(&self) -> f64 {
-        self.fold_state.scale() * self.row_count() as f64
+        self.height
     }
 
     pub fn width(&self) -> f64 {
@@ -185,5 +191,28 @@ impl Default for FoldingState {
             column_index: 0,
             scale: 1.0,
         }
+    }
+}
+
+pub fn lines<'a>(
+    height: Iter<'a, f64>,
+    text: Iter<'a, String>,
+    token_infos: Iter<'a, Vec<TokenInfo>>,
+    inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
+    breaks: Iter<'a, Vec<usize>>,
+    folded: &'a HashSet<usize>,
+    folding: &'a HashMap<usize, FoldingState>,
+    unfolding: &'a HashMap<usize, FoldingState>,
+) -> Lines<'a> {
+    Lines {
+        line_index: 0,
+        height,
+        text,
+        token_infos,
+        inlays,
+        breaks,
+        folded,
+        folding,
+        unfolding,
     }
 }

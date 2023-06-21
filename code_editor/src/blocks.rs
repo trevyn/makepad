@@ -60,21 +60,29 @@ impl BlockInlay {
             breaks: Vec::new(),
         }
     }
+    pub fn row_count(&self) -> usize {
+        self.breaks.len() + 1
+    }
 
-    pub fn as_line(&self) -> Line<'_> {
-        Line {
-            text: &self.text,
-            token_infos: &self.token_infos,
-            inlays: &[],
-            breaks: &self.breaks,
-            fold_state: FoldState::Unfolded,
-        }
+    pub fn height(&self) -> f64 {
+        self.row_count() as f64
     }
 
     pub fn tokens(&self) -> Tokens<'_> {
         use crate::tokens;
 
         tokens::tokens(&self.text, self.token_infos.iter())
+    }
+
+    pub fn as_line(&self) -> Line<'_> {
+        Line {
+            height: self.height(),
+            text: &self.text,
+            token_infos: &self.token_infos,
+            inlays: &[],
+            breaks: &self.breaks,
+            fold_state: FoldState::Unfolded,
+        }
     }
 
     pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
