@@ -1,13 +1,9 @@
-mod blocks;
-mod inlines;
-mod lines;
-mod tokens;
-
-pub use self::{
-    blocks::{Block, Blocks},
-    inlines::{Inline, Inlines},
-    lines::{FoldState, FoldingState, Line, Lines},
-    tokens::{Token, TokenInfo, TokenKind, Tokens},
+pub use crate::{
+    blocks::{Block, BlockInlay},
+    inlines::{Inline, InlineInlay},
+    lines::{FoldState, FoldingState, Line},
+    tokens::{Token, TokenInfo, TokenKind},
+    Blocks, Inlines, Lines, Tokens,
 };
 
 use {
@@ -42,10 +38,10 @@ impl State {
             inline_inlays: (0..document.text.len())
                 .map(|_| {
                     vec![
-                        (20, Inlay::new("X Y Z")),
-                        (40, Inlay::new("X Y Z")),
-                        (60, Inlay::new("X Y Z")),
-                        (80, Inlay::new("X Y Z")),
+                        (20, InlineInlay::new("X Y Z")),
+                        (40, InlineInlay::new("X Y Z")),
+                        (60, InlineInlay::new("X Y Z")),
+                        (80, InlineInlay::new("X Y Z")),
                     ]
                 })
                 .collect(),
@@ -61,10 +57,10 @@ impl State {
             unfolding: HashMap::new(),
             new_unfolding: HashMap::new(),
             block_inlays: vec![
-                (10, Inlay::new("X Y Z")),
-                (20, Inlay::new("X Y Z")),
-                (30, Inlay::new("X Y Z")),
-                (40, Inlay::new("X Y Z")),
+                (10, BlockInlay::new("XXX YYY ZZZ")),
+                (20, BlockInlay::new("XXX YYY ZZZ")),
+                (30, BlockInlay::new("XXX YYY ZZZ")),
+                (40, BlockInlay::new("XXX YYY ZZZ")),
             ],
         });
         self.documents[document_id].session_ids.insert(session_id);
@@ -81,10 +77,10 @@ impl State {
         self.sessions.remove(session_id);
     }
 
-    pub fn focus(&self, session_id: SessionId) -> Focus<'_> {
+    pub fn view(&self, session_id: SessionId) -> View<'_> {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
-        Focus {
+        View {
             wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
@@ -97,11 +93,10 @@ impl State {
         }
     }
 
-
-    pub fn focus_mut(&mut self, session_id: SessionId) -> FocusMut<'_> {
+    pub fn view_mut(&mut self, session_id: SessionId) -> ViewMut<'_> {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
-        FocusMut {
+        ViewMut {
             wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
@@ -120,7 +115,7 @@ impl State {
         &mut self,
         path: Option<impl AsRef<Path> + Into<PathBuf>>,
     ) -> io::Result<Id<Document>> {
-        use std::fs;
+        use {crate::tokenize, std::fs};
 
         let text = {
             let mut text: Vec<_> = String::from_utf8_lossy(
@@ -136,7 +131,7 @@ impl State {
             }
             text
         };
-        let token_infos = text.iter().map(|text| tokenize(text)).collect();
+        let token_infos = text.iter().map(|text| tokenize::tokenize(text)).collect();
         Ok(self.documents.insert(Document {
             session_ids: HashSet::new(),
             text,
@@ -152,19 +147,20 @@ impl State {
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct SessionId(Id<Session>);
 
-pub struct Focus<'a> {
+#[derive(Clone, Copy, Debug)]
+pub struct View<'a> {
     wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
-    inline_inlays: &'a [Vec<(usize, Inlay)>],
+    inline_inlays: &'a [Vec<(usize, InlineInlay)>],
     breaks: &'a [Vec<usize>],
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, FoldingState>,
     unfolding: &'a HashMap<usize, FoldingState>,
-    block_inlays: &'a Vec<(usize, Inlay)>,
+    block_inlays: &'a Vec<(usize, BlockInlay)>,
 }
 
-impl<'a> Focus<'a> {
+impl<'a> View<'a> {
     pub fn line_count(&self) -> usize {
         self.text.len()
     }
@@ -192,27 +188,30 @@ impl<'a> Focus<'a> {
     }
 
     pub fn blocks(&self) -> Blocks<'a> {
-        Blocks::new(self.lines(), self.block_inlays.iter())
+        use crate::blocks;
+
+        blocks::blocks(self.lines(), self.block_inlays.iter())
     }
 }
 
-pub struct FocusMut<'a> {
+#[derive(Debug)]
+pub struct ViewMut<'a> {
     wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
-    inline_inlays: &'a mut [Vec<(usize, Inlay)>],
+    inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
     breaks: &'a mut [Vec<usize>],
     folded: &'a mut HashSet<usize>,
     folding: &'a mut HashMap<usize, FoldingState>,
     unfolding: &'a mut HashMap<usize, FoldingState>,
-    block_inlays: &'a mut Vec<(usize, Inlay)>,
+    block_inlays: &'a mut Vec<(usize, BlockInlay)>,
     new_folding: &'a mut HashMap<usize, FoldingState>,
     new_unfolding: &'a mut HashMap<usize, FoldingState>,
 }
 
-impl<'a> FocusMut<'a> {
-    pub fn as_focus(&self) -> Focus<'_> {
-        Focus {
+impl<'a> ViewMut<'a> {
+    pub fn as_view(&self) -> View<'_> {
+        View {
             wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
@@ -226,19 +225,19 @@ impl<'a> FocusMut<'a> {
     }
 
     pub fn line_count(&self) -> usize {
-        self.as_focus().line_count()
+        self.as_view().line_count()
     }
 
     pub fn line(&self, line_index: usize) -> Line<'_> {
-        self.as_focus().line(line_index)
+        self.as_view().line(line_index)
     }
 
     pub fn lines(&self) -> Lines<'_> {
-        self.as_focus().lines()
+        self.as_view().lines()
     }
 
     pub fn blocks(&self) -> Blocks<'_> {
-        self.as_focus().blocks()
+        self.as_view().blocks()
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -246,6 +245,9 @@ impl<'a> FocusMut<'a> {
             *self.wrap_column_index = wrap_column_index;
             for line_index in 0..self.line_count() {
                 self.wrap_line(line_index);
+            }
+            for (_, block_inlay) in self.block_inlays.iter_mut() {
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
@@ -314,30 +316,14 @@ impl<'a> FocusMut<'a> {
     }
 
     fn wrap_line(&mut self, line_index: usize) {
-        self.breaks[line_index] =
-            if let Some(wrap_column_index) = *self.wrap_column_index {
-                wrap(self.line(line_index), wrap_column_index)
-            } else {
-                Vec::new()
-            };
-    }
-}
+        use crate::wrap;
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Inlay {
-    pub text: String,
-    pub token_infos: Vec<TokenInfo>,
-}
-
-impl Inlay {
-    pub fn new(text: impl Into<String>) -> Self {
-        let text = text.into();
-        let token_infos = tokenize(&text);
-        Self { text, token_infos }
-    }
-
-    pub fn tokens(&self) -> Tokens<'_> {
-        Tokens::new(&self.text, self.token_infos.iter())
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
+        } else {
+            Vec::new()
+        };
     }
 }
 
@@ -345,12 +331,12 @@ impl Inlay {
 struct Session {
     wrap_column_index: Option<usize>,
     document_id: Id<Document>,
-    inline_inlays: Vec<Vec<(usize, Inlay)>>,
+    inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
     folded: HashSet<usize>,
     folding: HashMap<usize, FoldingState>,
     unfolding: HashMap<usize, FoldingState>,
-    block_inlays: Vec<(usize, Inlay)>,
+    block_inlays: Vec<(usize, BlockInlay)>,
     new_folding: HashMap<usize, FoldingState>,
     new_unfolding: HashMap<usize, FoldingState>,
 }
@@ -360,42 +346,4 @@ struct Document {
     session_ids: HashSet<Id<Session>>,
     text: Vec<String>,
     token_infos: Vec<Vec<TokenInfo>>,
-}
-
-fn tokenize(text: &str) -> Vec<TokenInfo> {
-    use crate::StrExt;
-
-    text.split_whitespace_boundaries()
-        .map(|text| TokenInfo {
-            byte_count: text.len(),
-            kind: if text.chars().next().unwrap().is_whitespace() {
-                TokenKind::Whitespace
-            } else {
-                TokenKind::Unknown
-            },
-        })
-        .collect()
-}
-
-fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
-    use crate::CharExt;
-
-    let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
-    let mut column_index = 0;
-    for inline in line.inlines() {
-        match inline {
-            Inline::Token { token, .. } => {
-                let column_count: usize = token.text.chars().map(|char| char.width()).sum();
-                if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
-                    column_index = 0;
-                }
-                inlay_byte_offset += token.text.len();
-                column_index += column_count;
-            }
-            _ => {}
-        }
-    }
-    breaks
 }

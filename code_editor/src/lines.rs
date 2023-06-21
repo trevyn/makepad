@@ -1,5 +1,5 @@
 use {
-    super::{Inlay, Inlines, TokenInfo, Tokens},
+    crate::{inlines::InlineInlay, tokens::TokenInfo, tokens::Tokens, Inlines},
     std::{
         collections::{HashMap, HashSet},
         slice::Iter,
@@ -11,7 +11,7 @@ pub struct Lines<'a> {
     line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
-    inlays: Iter<'a, Vec<(usize, Inlay)>>,
+    inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, FoldingState>,
@@ -22,7 +22,7 @@ impl<'a> Lines<'a> {
     pub(super) fn new(
         text: Iter<'a, String>,
         token_infos: Iter<'a, Vec<TokenInfo>>,
-        inlays: Iter<'a, Vec<(usize, Inlay)>>,
+        inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
         breaks: Iter<'a, Vec<usize>>,
         folded: &'a HashSet<usize>,
         folding: &'a HashMap<usize, FoldingState>,
@@ -66,22 +66,55 @@ impl<'a> Iterator for Lines<'a> {
 pub struct Line<'a> {
     pub(super) text: &'a str,
     pub(super) token_infos: &'a [TokenInfo],
-    pub(super) inlays: &'a [(usize, Inlay)],
+    pub(super) inlays: &'a [(usize, InlineInlay)],
     pub(super) breaks: &'a [usize],
     pub(super) fold_state: FoldState,
 }
 
 impl<'a> Line<'a> {
+    pub fn row_count(&self) -> usize {
+        self.breaks.len() + 1
+    }
+
+    pub fn column_count(&self) -> usize {
+        use {crate::inlines::Inline, crate::StrExt};
+        let mut column_count = 0;
+        let mut max_column_count = 0;
+        for inline in self.inlines() {
+            match inline {
+                Inline::Token { token, .. } => {
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
+                }
+                Inline::Break => column_count = 0,
+            }
+        }
+        max_column_count
+    }
+
+    pub fn height(&self) -> f64 {
+        self.fold_state.scale() * self.row_count() as f64
+    }
+
+    pub fn width(&self) -> f64 {
+        let width = self.fold_state.column_x(self.column_count());
+        width
+    }
+
     pub fn text(&self) -> &str {
         self.text
     }
 
     pub fn tokens(&self) -> Tokens<'a> {
-        Tokens::new(self.text, self.token_infos.iter())
+        use crate::tokens;
+
+        tokens::tokens(self.text, self.token_infos.iter())
     }
 
     pub fn inlines(&self) -> Inlines<'a> {
-        Inlines::new(self.tokens(), self.inlays.iter(), self.breaks.iter())
+        use crate::inlines;
+
+        inlines::inlines(self.tokens(), self.inlays.iter(), self.breaks.iter())
     }
 
     pub fn fold_state(&self) -> FoldState {
@@ -114,12 +147,36 @@ impl FoldState {
             Self::Unfolded
         }
     }
+
+    pub fn scale(self) -> f64 {
+        match self {
+            Self::Folded => 0.0,
+            Self::Folding(state) | Self::Unfolding(state) => state.scale,
+            Self::Unfolded => 1.0,
+        }
+    }
+
+    pub fn column_x(self, column_index: usize) -> f64 {
+        match self {
+            Self::Folded => 0.0,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
     pub column_index: usize,
     pub scale: f64,
+}
+
+impl FoldingState {
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
+    }
 }
 
 impl Default for FoldingState {

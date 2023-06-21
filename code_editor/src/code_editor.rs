@@ -1,6 +1,10 @@
 use {
     crate::{
-        state::{Block, FoldingState, Inline, Line, SessionId, Token},
+        inlines::Inline,
+        lines::{FoldingState, Line},
+        state::{Block, SessionId},
+        tokens::Token,
+        state::ViewMut,
         State,
     },
     makepad_widgets::*,
@@ -29,6 +33,8 @@ pub struct CodeEditor {
     #[live]
     walk: Walk,
     #[live]
+    scroll_bars: ScrollBars,
+    #[live]
     draw_text: DrawText,
     #[live]
     inlay_color: Vec4,
@@ -42,10 +48,16 @@ impl CodeEditor {
             x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
-        state.focus_mut(session_id).set_wrap_column_index(
-            Some((cx.turtle().rect().size.x / column_width as f64) as usize),
-        );
-        DrawContext {
+        
+        let mut view = state.view_mut(session_id);
+        view.set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
+        ));
+
+        self.scroll_bars.begin(cx, self.walk, Layout::default());
+        let scroll_position = self.scroll_bars.get_scroll_pos();
+
+        let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             inlay_color: self.inlay_color,
             token_color: self.token_color,
@@ -55,8 +67,24 @@ impl CodeEditor {
             fold: FoldingState::default(),
             row_height,
             column_width,
+        };
+        for block in view.blocks() {
+            context.draw_block(cx, block);
         }
-        .draw(cx, state, session_id);
+
+        let mut height = 0.0;
+        let mut max_width = 0.0;
+        for line in view.lines() {
+            height += line.height();
+            max_width = max_width.max(line.width());
+        }
+
+        cx.turtle_mut().set_used(max_width, height);
+        self.scroll_bars.end(cx);
+
+        if view.update_fold_state() {
+            cx.redraw_all();
+        }
     }
 
     pub fn handle_event(
@@ -66,21 +94,25 @@ impl CodeEditor {
         session_id: SessionId,
         event: &Event,
     ) {
+        self.scroll_bars.handle_event_with(cx, event, &mut |cx, _| {
+            cx.redraw_all();
+        });
         match event {
             Event::KeyDown(KeyEvent {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                let mut focus = state.focus_mut(session_id);
-                for line_index in 0..focus.line_count() {
-                    if focus.line(line_index)
+                let mut view = state.view_mut(session_id);
+                for line_index in 0..view.line_count() {
+                    if view
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        focus.fold_line(line_index, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -89,9 +121,9 @@ impl CodeEditor {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                let mut focus = state.focus_mut(session_id);
-                for line_index in 0..focus.line_count() {
-                    if focus
+                let mut view = state.view_mut(session_id);
+                for line_index in 0..view.line_count() {
+                    if view
                         .line(line_index)
                         .text()
                         .chars()
@@ -99,7 +131,7 @@ impl CodeEditor {
                         .count()
                         >= 8
                     {
-                        focus.unfold_line(line_index, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -123,30 +155,18 @@ struct DrawContext<'a> {
 
 impl<'a> DrawContext<'a> {
     fn position(&self) -> DVec2 {
-        let column_count_before = self.column_index.min(self.fold.column_index);
-        let column_count_after = self.column_index - column_count_before;
-        let column_width_before = self.column_width;
-        let column_width_after = self.fold.scale * self.column_width;
         DVec2 {
-            x: column_count_before as f64 * column_width_before
-                + column_count_after as f64 * column_width_after,
+            x: self.fold.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        }
-    }
-
-    fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        let mut focus = state.focus_mut(session_id);
-        for block in focus.blocks() {
-            self.draw_block(cx, block);
-        }
-        if focus.update_fold_state() {
-            cx.redraw_all();
         }
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
         match block {
-            Block::Line { inlay, line } => {
+            Block::Line {
+                is_inlay: inlay,
+                line,
+            } => {
                 self.inlay = inlay;
                 self.draw_line(cx, line);
                 self.inlay = false;
@@ -172,7 +192,10 @@ impl<'a> DrawContext<'a> {
 
     fn draw_inline(&mut self, cx: &mut Cx2d<'_>, inline: Inline) {
         match inline {
-            Inline::Token { inlay, token } => {
+            Inline::Token {
+                is_inlay: inlay,
+                token,
+            } => {
                 let old_inlay = self.inlay;
                 self.inlay |= inlay;
                 self.draw_token(cx, token);
@@ -197,6 +220,6 @@ impl<'a> DrawContext<'a> {
         if token.kind != TokenKind::Whitespace {
             self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.column_index += token.text.width();
+        self.column_index += token.text.column_count();
     }
 }

@@ -1,5 +1,8 @@
 use {
-    super::{tokens::Token, Inlay, Tokens},
+    crate::{
+        tokens::{Token, TokenInfo},
+        Tokens,
+    },
     std::slice::Iter,
 };
 
@@ -10,26 +13,8 @@ pub struct Inlines<'a> {
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
-    inlays: Iter<'a, (usize, Inlay)>,
+    inlays: Iter<'a, (usize, InlineInlay)>,
     breaks: Iter<'a, usize>,
-}
-
-impl<'a> Inlines<'a> {
-    pub(super) fn new(
-        mut tokens: Tokens<'a>,
-        inlays: Iter<'a, (usize, Inlay)>,
-        breaks: Iter<'a, usize>,
-    ) -> Self {
-        Self {
-            byte_offset: 0,
-            inlay_byte_offset: 0,
-            inlay_tokens: None,
-            token: tokens.next(),
-            tokens,
-            inlays,
-            breaks,
-        }
-    }
 }
 
 impl<'a> Iterator for Inlines<'a> {
@@ -51,7 +36,10 @@ impl<'a> Iterator for Inlines<'a> {
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
                 self.inlay_byte_offset += token.text.len();
-                return Some(Inline::Token { inlay: true, token });
+                return Some(Inline::Token {
+                    is_inlay: true,
+                    token,
+                });
             }
             self.inlay_tokens = None;
         }
@@ -77,7 +65,7 @@ impl<'a> Iterator for Inlines<'a> {
         self.byte_offset += token.text.len();
         self.inlay_byte_offset += token.text.len();
         Some(Inline::Token {
-            inlay: false,
+            is_inlay: false,
             token,
         })
     }
@@ -85,6 +73,44 @@ impl<'a> Iterator for Inlines<'a> {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Inline<'a> {
-    Token { inlay: bool, token: Token<'a> },
+    Token { is_inlay: bool, token: Token<'a> },
     Break,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct InlineInlay {
+    pub text: String,
+    pub token_infos: Vec<TokenInfo>,
+}
+
+impl InlineInlay {
+    pub fn new(text: impl Into<String>) -> Self {
+        use crate::tokenize;
+
+        let text = text.into();
+        let token_infos = tokenize::tokenize(&text);
+        Self { text, token_infos }
+    }
+
+    pub fn tokens(&self) -> Tokens<'_> {
+        use crate::tokens;
+
+        tokens::tokens(&self.text, self.token_infos.iter())
+    }
+}
+
+pub fn inlines<'a>(
+    mut tokens: Tokens<'a>,
+    inlays: Iter<'a, (usize, InlineInlay)>,
+    breaks: Iter<'a, usize>,
+) -> Inlines<'a> {
+    Inlines {
+        byte_offset: 0,
+        inlay_byte_offset: 0,
+        inlay_tokens: None,
+        token: tokens.next(),
+        tokens,
+        inlays,
+        breaks,
+    }
 }

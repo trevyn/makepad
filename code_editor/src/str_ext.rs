@@ -1,15 +1,15 @@
 pub trait StrExt {
-    fn width(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn width(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.width()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {

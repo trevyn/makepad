@@ -6,12 +6,6 @@ pub struct Tokens<'a> {
     infos: Iter<'a, TokenInfo>,
 }
 
-impl<'a> Tokens<'a> {
-    pub(super) fn new(text: &'a str, infos: Iter<'a, TokenInfo>) -> Self {
-        Self { text, infos }
-    }
-}
-
 impl<'a> Iterator for Tokens<'a> {
     type Item = Token<'a>;
 
@@ -42,4 +36,8 @@ pub struct TokenInfo {
 pub enum TokenKind {
     Whitespace,
     Unknown,
+}
+
+pub(super) fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
+    Tokens { text, infos }
 }
