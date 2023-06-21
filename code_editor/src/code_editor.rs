@@ -56,17 +56,18 @@ impl CodeEditor {
 
         self.scroll_bars.begin(cx, self.walk, Layout::default());
         let scroll_position = self.scroll_bars.get_scroll_pos();
-
+   
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
+            row_height,
+            column_width,
             inlay_color: self.inlay_color,
             token_color: self.token_color,
+            scroll_position,
             row_y: 0.0,
             column_index: 0,
             inlay: false,
-            fold: FoldingState::default(),
-            row_height,
-            column_width,
+            fold_state: FoldingState::default(),
         };
         for block in view.blocks() {
             context.draw_block(cx, block);
@@ -74,9 +75,13 @@ impl CodeEditor {
 
         let mut height = 0.0;
         let mut max_width = 0.0;
-        for line in view.lines() {
-            height += line.height();
-            max_width = max_width.max(line.width());
+        for block in view.blocks() {
+            match block {
+                Block::Line { line, .. } => {
+                    height += line.height() * row_height;
+                    max_width = max_width.max(line.width()) * column_width;
+                }
+            }
         }
 
         cx.turtle_mut().set_used(max_width, height);
@@ -143,22 +148,23 @@ impl CodeEditor {
 
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
+    row_height: f64,
+    column_width: f64,
     inlay_color: Vec4,
     token_color: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
     column_index: usize,
     inlay: bool,
-    fold: FoldingState,
-    row_height: f64,
-    column_width: f64,
+    fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
     fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold.column_x(self.column_index) * self.column_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        }
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -179,15 +185,15 @@ impl<'a> DrawContext<'a> {
 
         match line.fold_state() {
             FoldState::Folded => return,
-            FoldState::Folding(fold) | FoldState::Unfolding(fold) => self.fold = fold,
+            FoldState::Folding(fold) | FoldState::Unfolding(fold) => self.fold_state = fold,
             FoldState::Unfolded => {}
         }
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
         self.column_index = 0;
-        self.row_y += self.fold.scale * self.row_height;
-        self.fold = FoldingState::default();
+        self.row_y += self.fold_state.scale * self.row_height;
+        self.fold_state = FoldingState::default();
     }
 
     fn draw_inline(&mut self, cx: &mut Cx2d<'_>, inline: Inline) {
@@ -203,7 +209,7 @@ impl<'a> DrawContext<'a> {
             }
             Inline::Break => {
                 self.column_index = 0;
-                self.row_y += self.fold.scale * self.row_height;
+                self.row_y += self.fold_state.scale * self.row_height;
             }
         }
     }
@@ -211,7 +217,7 @@ impl<'a> DrawContext<'a> {
     fn draw_token(&mut self, cx: &mut Cx2d<'_>, token: Token<'_>) {
         use crate::{state::TokenKind, StrExt};
 
-        self.draw_text.font_scale = self.fold.scale;
+        self.draw_text.font_scale = self.fold_state.scale;
         self.draw_text.color = if self.inlay {
             self.inlay_color
         } else {
