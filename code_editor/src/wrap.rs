@@ -1,4 +1,4 @@
-use crate::lines::Line;
+use crate::Line;
 
 pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};

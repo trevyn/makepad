@@ -1,4 +1,7 @@
-use std::slice::Iter;
+use {
+    crate::tokenize::{TokenInfo, TokenKind},
+    std::slice::Iter,
+};
 
 #[derive(Clone, Debug)]
 pub struct Tokens<'a> {
@@ -26,18 +29,6 @@ pub struct Token<'a> {
     pub kind: TokenKind,
 }
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub struct TokenInfo {
-    pub byte_count: usize,
-    pub kind: TokenKind,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum TokenKind {
-    Whitespace,
-    Unknown,
-}
-
-pub(super) fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
+pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
     Tokens { text, infos }
 }

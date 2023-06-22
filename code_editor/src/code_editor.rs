@@ -1,11 +1,10 @@
 use {
     crate::{
+        fold::FoldingState,
         inlines::Inline,
-        lines::{FoldingState, Line},
         state::{Block, SessionId},
         tokens::Token,
-        state::ViewMut,
-        State,
+        Line, State,
     },
     makepad_widgets::*,
 };
@@ -48,15 +47,17 @@ impl CodeEditor {
             x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
-        
-        let mut view = state.view_mut(session_id);
-        view.set_wrap_column_index(Some(
+
+        state.view_mut(session_id).set_wrap_column_index(Some(
             (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
-
+        
         self.scroll_bars.begin(cx, self.walk, Layout::default());
         let scroll_position = self.scroll_bars.get_scroll_pos();
-   
+
+        let view = state.view(session_id);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -64,18 +65,18 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: 0.0,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks() {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
         let mut height = 0.0;
         let mut max_width = 0.0;
-        for block in view.blocks() {
+        for block in view.blocks(0, view.line_count()) {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
@@ -87,7 +88,7 @@ impl CodeEditor {
         cx.turtle_mut().set_used(max_width, height);
         self.scroll_bars.end(cx);
 
-        if view.update_fold_state() {
+        if state.view_mut(session_id).update_fold_states() {
             cx.redraw_all();
         }
     }
@@ -117,7 +118,7 @@ impl CodeEditor {
                         .count()
                         >= 8
                     {
-                        view.fold(line_index, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -136,7 +137,7 @@ impl CodeEditor {
                         .count()
                         >= 8
                     {
-                        view.unfold(line_index, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -181,7 +182,7 @@ impl<'a> DrawContext<'a> {
     }
 
     fn draw_line(&mut self, cx: &mut Cx2d<'_>, line: Line<'_>) {
-        use crate::state::FoldState;
+        use crate::fold::FoldState;
 
         match line.fold_state() {
             FoldState::Folded => return,

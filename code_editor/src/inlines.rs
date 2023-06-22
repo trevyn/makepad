@@ -1,8 +1,5 @@
 use {
-    crate::{
-        tokens::{Token, TokenInfo},
-        Tokens,
-    },
+    crate::{inlay::InlineInlay, tokens::Token, Tokens},
     std::slice::Iter,
 };
 
@@ -75,28 +72,6 @@ impl<'a> Iterator for Inlines<'a> {
 pub enum Inline<'a> {
     Token { is_inlay: bool, token: Token<'a> },
     Break,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct InlineInlay {
-    pub text: String,
-    pub token_infos: Vec<TokenInfo>,
-}
-
-impl InlineInlay {
-    pub fn new(text: impl Into<String>) -> Self {
-        use crate::tokenize;
-
-        let text = text.into();
-        let token_infos = tokenize::tokenize(&text);
-        Self { text, token_infos }
-    }
-
-    pub fn tokens(&self) -> Tokens<'_> {
-        use crate::tokens;
-
-        tokens::tokens(&self.text, self.token_infos.iter())
-    }
 }
 
 pub fn inlines<'a>(

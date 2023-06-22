@@ -1,7 +1,17 @@
-use crate::tokens::TokenInfo;
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct TokenInfo {
+    pub byte_count: usize,
+    pub kind: TokenKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum TokenKind {
+    Whitespace,
+    Unknown,
+}
 
 pub fn tokenize(text: &str) -> Vec<TokenInfo> {
-    use crate::{tokens::TokenKind, StrExt};
+    use crate::StrExt;
 
     text.split_whitespace_boundaries()
         .map(|text| TokenInfo {

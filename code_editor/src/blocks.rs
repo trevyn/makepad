@@ -1,9 +1,5 @@
 use {
-    crate::{
-        lines::{FoldState, Line},
-        tokens::TokenInfo,
-        Lines, Tokens,
-    },
+    crate::{inlay::BlockInlay, Line, Lines},
     std::slice::Iter,
 };
 
@@ -41,64 +37,9 @@ pub enum Block<'a> {
     Line { is_inlay: bool, line: Line<'a> },
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct BlockInlay {
-    pub text: String,
-    pub token_infos: Vec<TokenInfo>,
-    pub breaks: Vec<usize>,
-}
-
-impl BlockInlay {
-    pub fn new(text: impl Into<String>) -> Self {
-        use crate::tokenize;
-
-        let text = text.into();
-        let token_infos = tokenize::tokenize(&text);
-        Self {
-            text,
-            token_infos,
-            breaks: Vec::new(),
-        }
-    }
-    pub fn row_count(&self) -> usize {
-        self.breaks.len() + 1
-    }
-
-    pub fn height(&self) -> f64 {
-        self.row_count() as f64
-    }
-
-    pub fn tokens(&self) -> Tokens<'_> {
-        use crate::tokens;
-
-        tokens::tokens(&self.text, self.token_infos.iter())
-    }
-
-    pub fn as_line(&self) -> Line<'_> {
-        Line {
-            height: self.height(),
-            text: &self.text,
-            token_infos: &self.token_infos,
-            inlays: &[],
-            breaks: &self.breaks,
-            fold_state: FoldState::Unfolded,
-        }
-    }
-
-    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
-        use crate::wrap;
-
-        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
-            wrap::wrap(self.as_line(), wrap_column_index)
-        } else {
-            Vec::new()
-        };
-    }
-}
-
-pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
+pub fn blocks<'a>(line_index: usize, lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_index: 0,
+        line_index,
         lines,
         inlays,
     }
