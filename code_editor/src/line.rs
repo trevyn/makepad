@@ -59,7 +59,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.column_x(self.column_count())
+        self.fold_state.position_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {

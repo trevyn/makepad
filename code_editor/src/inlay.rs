@@ -26,7 +26,7 @@ impl BlockInlay {
             &self.token_infos,
             &[],
             &self.breaks,
-            FoldState::Unfolded,
+            FoldState::default(),
             (self.breaks.len() + 1) as f64,
         )
     }

@@ -1,6 +1,6 @@
 use {
     crate::{
-        fold::FoldingState,
+        fold::FoldState,
         inlines::Inline,
         state::{Block, SessionId},
         tokens::Token,
@@ -42,55 +42,72 @@ pub struct CodeEditor {
 }
 
 impl CodeEditor {
-    pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        let DVec2 {
-            x: column_width,
-            y: row_height,
-        } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
-
-        state.view_mut(session_id).set_wrap_column_index(Some(
-            (cx.turtle().rect().size.x / column_width as f64) as usize,
-        ));
-        
-        self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_position = self.scroll_bars.get_scroll_pos();
+    pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {        
+        let mut viewport_origin = self.scroll_bars.get_scroll_pos();
+        let viewport_size = cx.turtle().rect().size;
+        let cell_size = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
         let view = state.view(session_id);
-        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
-        let mut context = DrawContext {
-            draw_text: &mut self.draw_text,
-            row_height,
-            column_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_position,
-            row_y: view.line_y(start_line_index) * row_height,
-            column_index: 0,
-            inlay: false,
-            fold_state: FoldingState::default(),
-        };
-        for block in view.blocks(start_line_index, end_line_index) {
-            context.draw_block(cx, block);
-        }
+        // Find index of the first line that is in the viewport.
+        let start_line_index = view.find_first_line_ending_after_y(viewport_origin.y / cell_size.y);
+        // Find index of one past the last line that is in the viewport.
+        let end_line_index = view
+            .find_first_line_starting_after_y((viewport_origin.y + viewport_size.y) / cell_size.y);
+        let start_line_y = view.line_y(start_line_index) * cell_size.y;
 
-        let mut height = 0.0;
+        // Word wrapping
+        state
+            .view_mut(session_id)
+            .set_wrap_column_index(Some((viewport_size.x / cell_size.x) as usize));
+        // After word wrapping, the position of the first line will have shifted. Adjust the origin
+        // of the viewport so that its in the same position relative to that line.
+        let old_start_line_y = start_line_y;
+        let start_line_y = state.view(session_id).line_y(start_line_index) * cell_size.y;
+        viewport_origin.y += start_line_y - old_start_line_y;
+
+        let view = state.view(session_id);
         let mut max_width = 0.0;
+        let mut height = 0.0;
         for block in view.blocks(0, view.line_count()) {
             match block {
                 Block::Line { line, .. } => {
-                    height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * column_width;
+                    max_width = max_width.max(line.width()) * cell_size.x;
+                    height += line.height() * cell_size.y;
                 }
             }
         }
 
-        cx.turtle_mut().set_used(max_width, height);
-        self.scroll_bars.end(cx);
-
-        if state.view_mut(session_id).update_fold_states() {
-            cx.redraw_all();
+        // Do the actual drawing
+        self.scroll_bars.begin(cx, self.walk, Layout::default());
+        let mut cx = CxDraw {
+            cx,
+            viewport_origin,
+            viewport_size,
+            fold_state: FoldState::default(),
+            position_y: start_line_y,
+            column_index: 0,
+            cell_size,
+            is_inlay: false,
+        };
+        for block in state.view(session_id).blocks(start_line_index, end_line_index) {
+            self.draw_block(&mut cx, block);
         }
+        cx.cx.turtle_mut().set_used(max_width, height);
+        self.scroll_bars.end(cx.cx);
+        
+        // Update fold animations
+        if state.view_mut(session_id).update_fold_states() {
+            // After updating the fold animations, the position of the first line will have
+            // shifted. Adjust the origin of the viewport so that its in the same position
+            // relative to that line.
+            let old_start_line_y = start_line_y;
+            let start_line_y = state.view(session_id).line_y(start_line_index) * cell_size.y;
+            viewport_origin.y += start_line_y - old_start_line_y;
+            cx.cx.redraw_all();
+        }
+
+        // Save the position of the scroll bar after we adjusted it.
+        self.scroll_bars.set_scroll_y(cx.cx, viewport_origin.y);
     }
 
     pub fn handle_event(
@@ -145,88 +162,83 @@ impl CodeEditor {
             _ => {}
         }
     }
-}
 
-struct DrawContext<'a> {
-    draw_text: &'a mut DrawText,
-    row_height: f64,
-    column_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_position: DVec2,
-    row_y: f64,
-    column_index: usize,
-    inlay: bool,
-    fold_state: FoldingState,
-}
-
-impl<'a> DrawContext<'a> {
-    fn position(&self) -> DVec2 {
-        DVec2 {
-            x: self.fold_state.column_x(self.column_index) * self.column_width,
-            y: self.row_y,
-        } - self.scroll_position
-    }
-
-    fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
+    fn draw_block(&mut self, cx: &mut CxDraw<'_, '_>, block: Block<'_>) {
         match block {
             Block::Line {
-                is_inlay: inlay,
+                is_inlay,
                 line,
             } => {
-                self.inlay = inlay;
+                cx.is_inlay = is_inlay;
                 self.draw_line(cx, line);
-                self.inlay = false;
+                cx.is_inlay = false;
             }
         }
     }
 
-    fn draw_line(&mut self, cx: &mut Cx2d<'_>, line: Line<'_>) {
-        use crate::fold::FoldState;
-
-        match line.fold_state() {
-            FoldState::Folded => return,
-            FoldState::Folding(fold) | FoldState::Unfolding(fold) => self.fold_state = fold,
-            FoldState::Unfolded => {}
+    fn draw_line(&mut self, cx: &mut CxDraw<'_, '_>, line: Line<'_>) {
+        cx.fold_state = line.fold_state();
+        if cx.fold_state.scale == 0.0 {
+            return;
         }
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.column_index = 0;
-        self.row_y += self.fold_state.scale * self.row_height;
-        self.fold_state = FoldingState::default();
+        cx.column_index = 0;
+        cx.position_y += cx.fold_state.scale * cx.cell_size.y;
+        cx.fold_state = FoldState::default();
     }
 
-    fn draw_inline(&mut self, cx: &mut Cx2d<'_>, inline: Inline) {
+    fn draw_inline(&mut self, cx: &mut CxDraw<'_, '_>, inline: Inline) {
         match inline {
             Inline::Token {
-                is_inlay: inlay,
+                is_inlay,
                 token,
             } => {
-                let old_inlay = self.inlay;
-                self.inlay |= inlay;
+                let old_is_inlay = cx.is_inlay;
+                cx.is_inlay |= is_inlay;
                 self.draw_token(cx, token);
-                self.inlay = old_inlay;
+                cx.is_inlay = old_is_inlay;
             }
             Inline::Break => {
-                self.column_index = 0;
-                self.row_y += self.fold_state.scale * self.row_height;
+                cx.column_index = 0;
+                cx.position_y += cx.fold_state.scale * cx.cell_size.y;
             }
         }
     }
 
-    fn draw_token(&mut self, cx: &mut Cx2d<'_>, token: Token<'_>) {
+    fn draw_token(&mut self, cx: &mut CxDraw<'_, '_>, token: Token<'_>) {
         use crate::{state::TokenKind, StrExt};
 
-        self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
+        self.draw_text.font_scale = cx.fold_state.scale;
+        self.draw_text.color = if cx.is_inlay {
             self.inlay_color
         } else {
             self.token_color
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.position(), token.text);
+            self.draw_text.draw_abs(cx.cx, cx.position(), token.text);
         }
-        self.column_index += token.text.column_count();
+        cx.column_index += token.text.column_count();
+    }
+}
+
+struct CxDraw<'a, 'b> {
+    cx: &'a mut Cx2d<'b>,
+    viewport_origin: DVec2,
+    viewport_size: DVec2,
+    fold_state: FoldState,
+    column_index: usize,
+    position_y: f64,
+    cell_size: DVec2,
+    is_inlay: bool,
+}
+
+impl<'a, 'b> CxDraw<'a, 'b> {
+    fn position(&self) -> DVec2 {
+        DVec2 {
+            x: self.fold_state.position_x(self.column_index) * self.cell_size.x,
+            y: self.position_y,
+        } - self.viewport_origin
     }
 }

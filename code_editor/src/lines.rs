@@ -1,6 +1,6 @@
 use {
     crate::{
-        fold::{FoldState, FoldingState},
+        fold::FoldState,
         inlay::InlineInlay,
         tokenize::TokenInfo,
         Line,
@@ -19,8 +19,8 @@ pub struct Lines<'a> {
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, FoldingState>,
-    unfolding: &'a HashMap<usize, FoldingState>,
+    folding: &'a HashMap<usize, FoldState>,
+    unfolding: &'a HashMap<usize, FoldState>,
     heights: Iter<'a, f64>,
 }
 
@@ -53,9 +53,9 @@ pub fn lines<'a>(
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, FoldingState>,
-    unfolding: &'a HashMap<usize, FoldingState>,
-    height: Iter<'a, f64>,
+    folding: &'a HashMap<usize, FoldState>,
+    unfolding: &'a HashMap<usize, FoldState>,
+    heights: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
         line_index,
@@ -66,6 +66,6 @@ pub fn lines<'a>(
         folded,
         folding,
         unfolding,
-        heights: height,
+        heights,
     }
 }

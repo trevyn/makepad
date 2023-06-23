@@ -37,7 +37,11 @@ pub enum Block<'a> {
     Line { is_inlay: bool, line: Line<'a> },
 }
 
-pub fn blocks<'a>(line_index: usize, lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
+pub fn blocks<'a>(
+    line_index: usize,
+    lines: Lines<'a>,
+    inlays: Iter<'a, (usize, BlockInlay)>,
+) -> Blocks<'a> {
     Blocks {
         line_index,
         lines,
