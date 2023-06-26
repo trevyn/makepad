@@ -100,7 +100,12 @@ impl<'a> Iterator for Lines<'a> {
             self.token_infos.next()?,
             self.inlays.next()?,
             self.wraps.next()?,
-            Fold::new(&self.folded, &self.folding, &self.unfolding, self.line_index),
+            Fold::new(
+                &self.folded,
+                &self.folding,
+                &self.unfolding,
+                self.line_index,
+            ),
             *self.heights.next()?,
         );
         self.line_index += 1;

@@ -1,9 +1,6 @@
 use {
     crate::{
-        inline::Inline,
-        state::{Block, SessionId},
-        token::Token,
-        Fold, Line, State,
+        block::Blocks, inline::Inlines, state::SessionId, token::Token, Block, Fold, Inline, State,
     },
     makepad_widgets::*,
 };
@@ -42,28 +39,53 @@ pub struct CodeEditor {
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        let mut viewport_origin = self.scroll_bars.get_scroll_pos();
+        use crate::token::TokenKind;
+
+        self.scroll_bars.begin(cx, self.walk, Layout::default());
+
+        let viewport_origin = self.scroll_bars.get_scroll_pos();
         let viewport_size = cx.turtle().rect().size;
         let cell_size = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        let view = state.view(session_id);
-        // Find index of the first line that is in the viewport.
-        let start_line_index = view.find_first_line_ending_after_y(viewport_origin.y / cell_size.y);
-        // Find index of one past the last line that is in the viewport.
-        let end_line_index = view
-            .find_first_line_starting_after_y((viewport_origin.y + viewport_size.y) / cell_size.y);
-        let start_line_y = if start_line_index == 0 {
-            0.0
-        } else {
-            view.line_summed_height(start_line_index - 1) * cell_size.y
-        };
-
-        // Word wrapping
         state
             .view_mut(session_id)
             .set_max_column_count(Some((viewport_size.x / cell_size.x) as usize));
 
-            
+        let view = state.view(session_id);
+        let start_line_index = view.find_first_line_ending_after_y(viewport_origin.y / cell_size.y);
+        let end_line_index = view
+            .find_first_line_starting_after_y((viewport_origin.y + viewport_size.y) / cell_size.y);
+        for event in (Draw {
+            viewport_origin,
+            cell_size,
+            y: if start_line_index == 0 {
+                0.0
+            } else {
+                view.line_summed_height(start_line_index - 1) * cell_size.y
+            },
+            column_index: 0,
+            state: Some(DrawState::Blocks {
+                blocks: state
+                    .view(session_id)
+                    .blocks(start_line_index..end_line_index),
+            }),
+        }) {
+            match event.kind {
+                DrawEventKind::Token { is_inlay, token } => {
+                    if token.kind == TokenKind::Whitespace {
+                        continue;
+                    }
+                    self.draw_text.font_scale = event.scale;
+                    self.draw_text.color = if is_inlay {
+                        self.inlay_color
+                    } else {
+                        self.token_color
+                    };
+                    self.draw_text.draw_abs(cx, event.position, token.text);
+                }
+                _ => {}
+            }
+        }
 
         let view = state.view(session_id);
         let mut max_width = 0.0;
@@ -76,29 +98,9 @@ impl CodeEditor {
                 }
             }
         }
+        cx.turtle_mut().set_used(max_width, height);
+        self.scroll_bars.end(cx);
 
-        // Do the actual drawing
-        self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let mut cx = CxDraw {
-            cx,
-            viewport_origin,
-            viewport_size,
-            fold: Fold::default(),
-            position_y: start_line_y,
-            column_index: 0,
-            cell_size,
-            is_inlay: false,
-        };
-        for block in state
-            .view(session_id)
-            .blocks(start_line_index..end_line_index)
-        {
-            self.draw_block(&mut cx, block);
-        }
-        cx.cx.turtle_mut().set_used(max_width, height);
-        self.scroll_bars.end(cx.cx);
-
-        // Update fold animations
         if state.view_mut(session_id).update_folds() {
             cx.cx.redraw_all();
         }
@@ -156,77 +158,120 @@ impl CodeEditor {
             _ => {}
         }
     }
-
-    fn draw_block(&mut self, cx: &mut CxDraw<'_, '_>, block: Block<'_>) {
-        match block {
-            Block::Line { is_inlay, line } => {
-                cx.is_inlay = is_inlay;
-                self.draw_line(cx, line);
-                cx.is_inlay = false;
-            }
-        }
-    }
-
-    fn draw_line(&mut self, cx: &mut CxDraw<'_, '_>, line: Line<'_>) {
-        cx.fold = line.fold();
-        if cx.fold == Fold::Folded {
-            return;
-        }
-        for inline in line.inlines() {
-            self.draw_inline(cx, inline);
-        }
-        cx.column_index = 0;
-        cx.position_y += cx.fold.scale() * cx.cell_size.y;
-        cx.fold = Fold::default();
-    }
-
-    fn draw_inline(&mut self, cx: &mut CxDraw<'_, '_>, inline: Inline) {
-        match inline {
-            Inline::Token { is_inlay, token } => {
-                let old_is_inlay = cx.is_inlay;
-                cx.is_inlay |= is_inlay;
-                self.draw_token(cx, token);
-                cx.is_inlay = old_is_inlay;
-            }
-            Inline::Wrap => {
-                cx.column_index = 0;
-                cx.position_y += cx.fold.scale() * cx.cell_size.y;
-            }
-        }
-    }
-
-    fn draw_token(&mut self, cx: &mut CxDraw<'_, '_>, token: Token<'_>) {
-        use crate::{state::TokenKind, StrExt};
-
-        self.draw_text.font_scale = cx.fold.scale();
-        self.draw_text.color = if cx.is_inlay {
-            self.inlay_color
-        } else {
-            self.token_color
-        };
-        if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx.cx, cx.position(), token.text);
-        }
-        cx.column_index += token.text.column_count();
-    }
 }
 
-struct CxDraw<'a, 'b> {
-    cx: &'a mut Cx2d<'b>,
+struct Draw<'a> {
     viewport_origin: DVec2,
-    viewport_size: DVec2,
-    fold: Fold,
-    column_index: usize,
-    position_y: f64,
     cell_size: DVec2,
-    is_inlay: bool,
+    y: f64,
+    column_index: usize,
+    state: Option<DrawState<'a>>,
 }
 
-impl<'a, 'b> CxDraw<'a, 'b> {
-    fn position(&self) -> DVec2 {
-        DVec2 {
-            x: self.fold.width(self.column_index) * self.cell_size.x,
-            y: self.position_y,
-        } - self.viewport_origin
+impl<'a> Draw<'a> {
+    fn create_event(&self, fold: Fold, kind: DrawEventKind<'a>) -> DrawEvent<'a> {
+        DrawEvent {
+            position: DVec2 {
+                x: fold.width(self.column_index) * self.cell_size.x,
+                y: self.y,
+            } - self.viewport_origin,
+            scale: fold.scale(),
+            kind,
+        }
     }
+}
+
+impl<'a> Iterator for Draw<'a> {
+    type Item = DrawEvent<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        use crate::StrExt;
+
+        loop {
+            break match self.state.take().unwrap() {
+                DrawState::Blocks { mut blocks } => match blocks.next() {
+                    Some(Block::Line { is_inlay, line, .. }) => {
+                        self.state = Some(DrawState::Inlines {
+                            blocks,
+                            is_inlay,
+                            fold: line.fold(),
+                            inlines: line.inlines(),
+                        });
+                        continue;
+                    }
+                    None => None,
+                },
+                DrawState::Inlines {
+                    blocks,
+                    is_inlay: is_inlay_line,
+                    fold,
+                    mut inlines,
+                } => Some(match inlines.next() {
+                    Some(inline) => {
+                        let event = match inline {
+                            Inline::Token {
+                                is_inlay: is_inlay_token,
+                                token,
+                            } => {
+                                let event = self.create_event(
+                                    fold,
+                                    DrawEventKind::Token {
+                                        is_inlay: is_inlay_line || is_inlay_token,
+                                        token,
+                                    },
+                                );
+                                self.column_index += token.text.column_count();
+                                event
+                            }
+                            Inline::Wrap => {
+                                let event = self.create_event(fold, DrawEventKind::NewRow);
+                                self.column_index = 0;
+                                self.y += fold.scale() * self.cell_size.y;
+                                event
+                            }
+                        };
+                        self.state = Some(DrawState::Inlines {
+                            blocks,
+                            is_inlay: is_inlay_line,
+                            fold,
+                            inlines,
+                        });
+                        event
+                    }
+                    None => {
+                        let event = self.create_event(fold, DrawEventKind::NewRow);
+                        self.column_index = 0;
+                        self.y += fold.scale() * self.cell_size.y;
+                        self.state = Some(DrawState::Blocks { blocks });
+                        event
+                    }
+                }),
+            };
+        }
+    }
+}
+
+enum DrawState<'a> {
+    Blocks {
+        blocks: Blocks<'a>,
+    },
+    Inlines {
+        blocks: Blocks<'a>,
+        is_inlay: bool,
+        fold: Fold,
+        inlines: Inlines<'a>,
+    },
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DrawEvent<'a> {
+    position: DVec2,
+    scale: f64,
+    kind: DrawEventKind<'a>,
+}
+
+#[derive(Clone, Copy, Debug)]
+enum DrawEventKind<'a> {
+    Token { is_inlay: bool, token: Token<'a> },
+    NewRow,
 }

@@ -13,15 +13,15 @@ impl Fold {
         folded: &HashSet<usize>,
         folding: &HashMap<usize, Folding>,
         unfolding: &HashMap<usize, Folding>,
-        index: usize,
+        line_index: usize,
     ) -> Self {
-        if folded.contains(&index) {
+        if folded.contains(&line_index) {
             return Self::Folded;
         }
-        if let Some(&folding) = folding.get(&index) {
+        if let Some(&folding) = folding.get(&line_index) {
             return Self::Folding(folding);
         }
-        if let Some(&folding) = unfolding.get(&index) {
+        if let Some(&folding) = unfolding.get(&line_index) {
             return Self::Unfolding(folding);
         }
         Fold::default()

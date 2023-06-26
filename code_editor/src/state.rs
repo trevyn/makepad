@@ -7,6 +7,7 @@ pub use {
         inline,
         inline::Inlines,
         line::Lines,
+        selection::Region,
         token::{Token, TokenInfo, TokenKind, Tokens},
         Arena, Block, Fold, Inline, Line,
     },
@@ -62,8 +63,8 @@ impl State {
                 heights: (0..document.text.len()).map(|_| 0.0).collect(),
                 summed_heights: RefCell::new(Vec::new()),
                 block_inlays: Vec::new(),
-                new_folding: HashMap::new(),
-                new_unfolding: HashMap::new(),
+                selection: vec![Region::default()],
+                tmp_folding: HashMap::new(),
             }),
         );
         self.documents[document_id].session_ids.insert(session_id.0);
@@ -102,6 +103,7 @@ impl State {
             heights: &session.heights,
             summed_heights: &session.summed_heights,
             block_inlays: &session.block_inlays,
+            selection: &session.selection,
         }
     }
 
@@ -120,8 +122,8 @@ impl State {
             heights: &mut session.heights,
             summed_heights: &mut session.summed_heights,
             block_inlays: &mut session.block_inlays,
-            new_folding: &mut session.new_folding,
-            new_unfolding: &mut session.new_unfolding,
+            selection: &mut session.selection,
+            tmp_folding: &mut session.tmp_folding,
         }
     }
 
@@ -173,7 +175,8 @@ pub struct View<'a> {
     unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
     summed_heights: &'a RefCell<Vec<f64>>,
-    block_inlays: &'a Vec<(usize, block::Inlay)>,
+    block_inlays: &'a [(usize, block::Inlay)],
+    selection: &'a [Region],
 }
 
 impl<'a> View<'a> {
@@ -242,10 +245,11 @@ impl<'a> View<'a> {
     }
 
     pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'a> {
-        block::blocks(
-            self.lines(line_index_range),
-            self.block_inlays,
-        )
+        block::blocks(self.lines(line_index_range), self.block_inlays)
+    }
+
+    pub fn selection(&self) -> &'a [Region] {
+        &self.selection
     }
 
     fn update_summed_heights(&self) {
@@ -283,8 +287,8 @@ pub struct ViewMut<'a> {
     heights: &'a mut [f64],
     summed_heights: &'a mut RefCell<Vec<f64>>,
     block_inlays: &'a mut Vec<(usize, block::Inlay)>,
-    new_folding: &'a mut HashMap<usize, Folding>,
-    new_unfolding: &'a mut HashMap<usize, Folding>,
+    selection: &'a mut Vec<Region>,
+    tmp_folding: &'a mut HashMap<usize, Folding>,
 }
 
 impl<'a> ViewMut<'a> {
@@ -301,6 +305,7 @@ impl<'a> ViewMut<'a> {
             heights: &self.heights,
             summed_heights: &self.summed_heights,
             block_inlays: &self.block_inlays,
+            selection: &self.selection,
         }
     }
 
@@ -334,6 +339,10 @@ impl<'a> ViewMut<'a> {
 
     pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'_> {
         self.as_view().blocks(line_index_range)
+    }
+
+    pub fn selection(&self) -> &[Region] {
+        self.as_view().selection()
     }
 
     pub fn set_max_column_count(&mut self, max_column_count: Option<usize>) {
@@ -401,20 +410,20 @@ impl<'a> ViewMut<'a> {
             if state.scale < 0.001 {
                 self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_index, state);
+                self.tmp_folding.insert(*line_index, state);
             }
         }
-        mem::swap(self.folding, self.new_folding);
-        self.new_folding.clear();
+        mem::swap(self.folding, self.tmp_folding);
+        self.tmp_folding.clear();
         for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_index, state);
+                self.tmp_folding.insert(*line_index, state);
             }
         }
-        mem::swap(self.unfolding, self.new_unfolding);
-        self.new_unfolding.clear();
+        mem::swap(self.unfolding, self.tmp_folding);
+        self.tmp_folding.clear();
         for line_index in 0..self.line_count() {
             self.update_line_height(line_index);
         }
@@ -468,8 +477,8 @@ struct Session {
     heights: Vec<f64>,
     summed_heights: RefCell<Vec<f64>>,
     block_inlays: Vec<(usize, block::Inlay)>,
-    new_folding: HashMap<usize, Folding>,
-    new_unfolding: HashMap<usize, Folding>,
+    selection: Vec<Region>,
+    tmp_folding: HashMap<usize, Folding>,
 }
 
 #[derive(Debug)]
