@@ -9,8 +9,7 @@ pub mod line;
 pub mod lines;
 pub mod state;
 pub mod str_ext;
-pub mod tokenize;
-pub mod tokens;
+pub mod token;
 pub mod wrap;
 
 pub use self::{
@@ -24,5 +23,4 @@ pub use self::{
     lines::{lines, Lines},
     state::State,
     str_ext::StrExt,
-    tokens::{tokens, Tokens},
 };

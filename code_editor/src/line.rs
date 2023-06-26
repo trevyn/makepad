@@ -1,4 +1,8 @@
-use crate::{inlay::InlineInlay, tokenize::TokenInfo, Fold, Inlines, Tokens};
+use crate::{
+    inlay::InlineInlay,
+    token::{TokenInfo, Tokens},
+    Fold, Inlines,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Line<'a> {
@@ -67,7 +71,9 @@ impl<'a> Line<'a> {
     }
 
     pub fn tokens(&self) -> Tokens<'a> {
-        crate::tokens(self.text, self.token_infos.iter())
+        use crate::token;
+
+        token::tokens(self.text, self.token_infos)
     }
 
     pub fn inlines(&self) -> Inlines<'a> {

@@ -1,4 +1,7 @@
-use crate::{tokenize::TokenInfo, Fold, Line, Tokens};
+use crate::{
+    token::{TokenInfo, Tokens},
+    Fold, Line,
+};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct BlockInlay {
@@ -9,10 +12,10 @@ pub struct BlockInlay {
 
 impl BlockInlay {
     pub fn new(text: impl Into<String>) -> Self {
-        use crate::tokenize;
+        use crate::token;
 
         let text = text.into();
-        let token_infos = tokenize::tokenize(&text);
+        let token_infos = token::tokenize(&text);
         Self {
             text,
             token_infos,
@@ -51,16 +54,16 @@ pub struct InlineInlay {
 
 impl InlineInlay {
     pub fn new(text: impl Into<String>) -> Self {
-        use crate::tokenize;
+        use crate::token;
 
         let text = text.into();
-        let token_infos = tokenize::tokenize(&text);
+        let token_infos = token::tokenize(&text);
         Self { text, token_infos }
     }
 
     pub fn tokens(&self) -> Tokens<'_> {
-        use crate::tokens;
+        use crate::token;
 
-        tokens::tokens(&self.text, self.token_infos.iter())
+        token::tokens(&self.text, &self.token_infos)
     }
 }

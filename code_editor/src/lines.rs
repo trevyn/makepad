@@ -1,5 +1,5 @@
 use {
-    crate::{fold::Folding, inlay::InlineInlay, tokenize::TokenInfo, Fold, Line},
+    crate::{fold::Folding, inlay::InlineInlay, token::TokenInfo, Fold, Line},
     std::{
         collections::{HashMap, HashSet},
         slice::Iter,

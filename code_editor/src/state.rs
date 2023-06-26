@@ -5,9 +5,8 @@ pub use {
         fold::Folding,
         inlay::{BlockInlay, InlineInlay},
         inlines::Inline,
-        tokenize::{TokenInfo, TokenKind},
-        tokens::Token,
-        Arena, Blocks, Fold, Inlines, Line, Lines, Tokens,
+        token::{Token, TokenInfo, TokenKind, Tokens},
+        Arena, Blocks, Fold, Inlines, Line, Lines,
     },
     std::{
         cell::RefCell,
@@ -127,7 +126,7 @@ impl State {
         &mut self,
         path: Option<impl AsRef<Path> + Into<PathBuf>>,
     ) -> io::Result<Id<Document>> {
-        use {crate::tokenize, std::fs};
+        use {crate::token, std::fs};
 
         let text = {
             let mut text: Vec<_> = String::from_utf8_lossy(
@@ -143,7 +142,7 @@ impl State {
             }
             text
         };
-        let token_infos = text.iter().map(|text| tokenize::tokenize(text)).collect();
+        let token_infos = text.iter().map(|text| token::tokenize(text)).collect();
         Ok(self.documents.insert(Document {
             session_ids: HashSet::new(),
             text,

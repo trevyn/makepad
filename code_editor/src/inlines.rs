@@ -1,5 +1,8 @@
 use {
-    crate::{inlay::InlineInlay, tokens::Token, Tokens},
+    crate::{
+        inlay::InlineInlay,
+        token::{Token, Tokens},
+    },
     std::slice::Iter,
 };
 

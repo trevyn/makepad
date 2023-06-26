@@ -2,7 +2,7 @@ use {
     crate::{
         inlines::Inline,
         state::{Block, SessionId},
-        tokens::Token,
+        token::Token,
         Fold, Line, State,
     },
     makepad_widgets::*,
