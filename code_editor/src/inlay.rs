@@ -1,4 +1,4 @@
-use crate::{fold::FoldState, tokenize::TokenInfo, Line, Tokens};
+use crate::{tokenize::TokenInfo, Fold, Line, Tokens};
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct BlockInlay {
@@ -26,7 +26,7 @@ impl BlockInlay {
             &self.token_infos,
             &[],
             &self.breaks,
-            FoldState::default(),
+            Fold::default(),
             (self.breaks.len() + 1) as f64,
         )
     }

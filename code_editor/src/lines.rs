@@ -1,10 +1,5 @@
 use {
-    crate::{
-        fold::FoldState,
-        inlay::InlineInlay,
-        tokenize::TokenInfo,
-        Line,
-    },
+    crate::{fold::Folding, inlay::InlineInlay, tokenize::TokenInfo, Fold, Line},
     std::{
         collections::{HashMap, HashSet},
         slice::Iter,
@@ -19,8 +14,8 @@ pub struct Lines<'a> {
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, FoldState>,
-    unfolding: &'a HashMap<usize, FoldState>,
+    folding: &'a HashMap<usize, Folding>,
+    unfolding: &'a HashMap<usize, Folding>,
     heights: Iter<'a, f64>,
 }
 
@@ -33,11 +28,11 @@ impl<'a> Iterator for Lines<'a> {
             self.token_infos.next()?,
             self.inlays.next()?,
             self.breaks.next()?,
-            FoldState::new(
-                self.line_index,
+            Fold::new(
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
+                self.line_index,
             ),
             *self.heights.next()?,
         );
@@ -53,8 +48,8 @@ pub fn lines<'a>(
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, FoldState>,
-    unfolding: &'a HashMap<usize, FoldState>,
+    folding: &'a HashMap<usize, Folding>,
+    unfolding: &'a HashMap<usize, Folding>,
     heights: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {

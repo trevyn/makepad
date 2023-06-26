@@ -2,12 +2,12 @@ pub use {
     crate::{
         arena::Id,
         blocks::Block,
-        fold::FoldState,
+        fold::Folding,
         inlay::{BlockInlay, InlineInlay},
         inlines::Inline,
         tokenize::{TokenInfo, TokenKind},
         tokens::Token,
-        Arena, Blocks, Inlines, Line, Lines, Tokens,
+        Arena, Blocks, Fold, Inlines, Line, Lines, Tokens,
     },
     std::{
         cell::RefCell,
@@ -167,8 +167,8 @@ pub struct View<'a> {
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
     breaks: &'a [Vec<usize>],
     folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, FoldState>,
-    unfolding: &'a HashMap<usize, FoldState>,
+    folding: &'a HashMap<usize, Folding>,
+    unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
     summed_heights: &'a RefCell<Vec<f64>>,
     block_inlays: &'a Vec<(usize, BlockInlay)>,
@@ -209,7 +209,7 @@ impl<'a> View<'a> {
             &self.token_infos[line_index],
             &self.inline_inlays[line_index],
             &self.breaks[line_index],
-            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            Fold::new(&self.folded, &self.folding, &self.unfolding, line_index),
             self.heights[line_index],
         )
     }
@@ -280,13 +280,13 @@ pub struct ViewMut<'a> {
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
     breaks: &'a mut [Vec<usize>],
     folded: &'a mut HashSet<usize>,
-    folding: &'a mut HashMap<usize, FoldState>,
-    unfolding: &'a mut HashMap<usize, FoldState>,
+    folding: &'a mut HashMap<usize, Folding>,
+    unfolding: &'a mut HashMap<usize, Folding>,
     heights: &'a mut [f64],
     summed_heights: &'a mut RefCell<Vec<f64>>,
     block_inlays: &'a mut Vec<(usize, BlockInlay)>,
-    new_folding: &'a mut HashMap<usize, FoldState>,
-    new_unfolding: &'a mut HashMap<usize, FoldState>,
+    new_folding: &'a mut HashMap<usize, Folding>,
+    new_unfolding: &'a mut HashMap<usize, Folding>,
 }
 
 impl<'a> ViewMut<'a> {
@@ -357,7 +357,7 @@ impl<'a> ViewMut<'a> {
         };
         self.folding.insert(
             line_index,
-            FoldState {
+            Folding {
                 column_index,
                 scale,
             },
@@ -375,7 +375,7 @@ impl<'a> ViewMut<'a> {
         };
         self.unfolding.insert(
             line_index,
-            FoldState {
+            Folding {
                 column_index,
                 scale,
             },
@@ -383,7 +383,7 @@ impl<'a> ViewMut<'a> {
         self.update_height(line_index);
     }
 
-    pub fn update_fold_states(&mut self) -> bool {
+    pub fn update_folds(&mut self) -> bool {
         use std::mem;
 
         if self.folding.is_empty() && self.unfolding.is_empty() {
@@ -442,7 +442,7 @@ impl<'a> ViewMut<'a> {
     fn update_height(&mut self, line_index: usize) {
         let old_height = self.heights[line_index];
         let line = self.line(line_index);
-        let new_height = line.fold_state().scale * line.row_count() as f64;
+        let new_height = line.fold().height(line.row_count());
         self.heights[line_index] = new_height;
         if old_height != new_height {
             self.summed_heights.borrow_mut().truncate(line_index);
@@ -457,13 +457,13 @@ struct Session {
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
     folded: HashSet<usize>,
-    folding: HashMap<usize, FoldState>,
-    unfolding: HashMap<usize, FoldState>,
+    folding: HashMap<usize, Folding>,
+    unfolding: HashMap<usize, Folding>,
     heights: Vec<f64>,
     summed_heights: RefCell<Vec<f64>>,
     block_inlays: Vec<(usize, BlockInlay)>,
-    new_folding: HashMap<usize, FoldState>,
-    new_unfolding: HashMap<usize, FoldState>,
+    new_folding: HashMap<usize, Folding>,
+    new_unfolding: HashMap<usize, Folding>,
 }
 
 #[derive(Debug)]

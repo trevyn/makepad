@@ -1,4 +1,4 @@
-use crate::{fold::FoldState, inlay::InlineInlay, tokenize::TokenInfo, Inlines, Tokens};
+use crate::{inlay::InlineInlay, tokenize::TokenInfo, Fold, Inlines, Tokens};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Line<'a> {
@@ -6,7 +6,7 @@ pub struct Line<'a> {
     token_infos: &'a [TokenInfo],
     inlays: &'a [(usize, InlineInlay)],
     breaks: &'a [usize],
-    fold_state: FoldState,
+    fold: Fold,
     height: f64,
 }
 
@@ -16,7 +16,7 @@ impl<'a> Line<'a> {
         token_infos: &'a [TokenInfo],
         inlays: &'a [(usize, InlineInlay)],
         breaks: &'a [usize],
-        fold_state: FoldState,
+        fold: Fold,
         height: f64,
     ) -> Self {
         Self {
@@ -24,13 +24,13 @@ impl<'a> Line<'a> {
             token_infos,
             inlays,
             breaks,
-            fold_state,
+            fold,
             height,
         }
     }
 
-    pub fn fold_state(&self) -> FoldState {
-        self.fold_state
+    pub fn fold(&self) -> Fold {
+        self.fold
     }
 
     pub fn row_count(&self) -> usize {
@@ -59,7 +59,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.position_x(self.column_count())
+        self.fold.width(self.column_count())
     }
 
     pub fn text(&self) -> &str {

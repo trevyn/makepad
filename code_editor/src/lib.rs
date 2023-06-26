@@ -18,6 +18,7 @@ pub use self::{
     blocks::{blocks, Blocks},
     char_ext::CharExt,
     code_editor::CodeEditor,
+    fold::Fold,
     inlines::{inlines, Inlines},
     line::Line,
     lines::{lines, Lines},

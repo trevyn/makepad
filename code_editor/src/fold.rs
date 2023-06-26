@@ -1,44 +1,65 @@
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FoldState {
-    pub column_index: usize,
-    pub scale: f64,
+pub enum Fold {
+    Folded,
+    Folding(Folding),
+    Unfolding(Folding),
+    Unfolded,
 }
 
-impl FoldState {
+impl Fold {
     pub fn new(
-        index: usize,
         folded: &HashSet<usize>,
-        folding_lines: &HashMap<usize, FoldState>,
-        unfolding_lines: &HashMap<usize, FoldState>,
+        folding: &HashMap<usize, Folding>,
+        unfolding: &HashMap<usize, Folding>,
+        index: usize,
     ) -> Self {
         if folded.contains(&index) {
-            Self {
-                column_index: 0,
-                scale: 1.0,
-            }
-        } else if let Some(state) = folding_lines.get(&index) {
-            *state
-        } else if let Some(state) = unfolding_lines.get(&index) {
-            *state
-        } else {
-            FoldState::default()
+            return Self::Folded;
+        }
+        if let Some(&folding) = folding.get(&index) {
+            return Self::Folding(folding);
+        }
+        if let Some(&folding) = unfolding.get(&index) {
+            return Self::Unfolding(folding);
+        }
+        Fold::default()
+    }
+
+    pub fn scale(self) -> f64 {
+        match self {
+            Self::Folded => 0.0,
+            Self::Folding(folding) | Self::Unfolding(folding) => folding.scale,
+            Self::Unfolded => 1.0,
         }
     }
 
-    pub fn position_x(self, column_index: usize) -> f64 {
-        let column_count_before = column_index.min(self.column_index);
-        let column_count_after = column_index - column_count_before;
-        column_count_before as f64 + self.scale * column_count_after as f64
+    pub fn width(self, column_count: usize) -> f64 {
+        match self {
+            Self::Folded => 0.0,
+            Self::Folding(folding) | Self::Unfolding(folding) => {
+                let column_count_before = column_count.min(folding.column_index);
+                let column_count_after = column_count - column_count_before;
+                column_count_before as f64 + folding.scale * column_count_after as f64
+            }
+            Self::Unfolded => column_count as f64,
+        }
+    }
+
+    pub fn height(self, row_count: usize) -> f64 {
+        self.scale() * row_count as f64
     }
 }
 
-impl Default for FoldState {
+impl Default for Fold {
     fn default() -> Self {
-        Self {
-            column_index: 0,
-            scale: 1.0,
-        }
+        Self::Unfolded
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Folding {
+    pub column_index: usize,
+    pub scale: f64,
 }

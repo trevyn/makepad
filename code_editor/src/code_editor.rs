@@ -1,10 +1,9 @@
 use {
     crate::{
-        fold::FoldState,
         inlines::Inline,
         state::{Block, SessionId},
         tokens::Token,
-        Line, State,
+        Fold, Line, State,
     },
     makepad_widgets::*,
 };
@@ -42,7 +41,7 @@ pub struct CodeEditor {
 }
 
 impl CodeEditor {
-    pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {        
+    pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let mut viewport_origin = self.scroll_bars.get_scroll_pos();
         let viewport_size = cx.turtle().rect().size;
         let cell_size = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
@@ -83,20 +82,23 @@ impl CodeEditor {
             cx,
             viewport_origin,
             viewport_size,
-            fold_state: FoldState::default(),
+            fold: Fold::default(),
             position_y: start_line_y,
             column_index: 0,
             cell_size,
             is_inlay: false,
         };
-        for block in state.view(session_id).blocks(start_line_index, end_line_index) {
+        for block in state
+            .view(session_id)
+            .blocks(start_line_index, end_line_index)
+        {
             self.draw_block(&mut cx, block);
         }
         cx.cx.turtle_mut().set_used(max_width, height);
         self.scroll_bars.end(cx.cx);
-        
+
         // Update fold animations
-        if state.view_mut(session_id).update_fold_states() {
+        if state.view_mut(session_id).update_folds() {
             // After updating the fold animations, the position of the first line will have
             // shifted. Adjust the origin of the viewport so that its in the same position
             // relative to that line.
@@ -165,10 +167,7 @@ impl CodeEditor {
 
     fn draw_block(&mut self, cx: &mut CxDraw<'_, '_>, block: Block<'_>) {
         match block {
-            Block::Line {
-                is_inlay,
-                line,
-            } => {
+            Block::Line { is_inlay, line } => {
                 cx.is_inlay = is_inlay;
                 self.draw_line(cx, line);
                 cx.is_inlay = false;
@@ -177,24 +176,21 @@ impl CodeEditor {
     }
 
     fn draw_line(&mut self, cx: &mut CxDraw<'_, '_>, line: Line<'_>) {
-        cx.fold_state = line.fold_state();
-        if cx.fold_state.scale == 0.0 {
+        cx.fold = line.fold();
+        if cx.fold == Fold::Folded {
             return;
         }
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
         cx.column_index = 0;
-        cx.position_y += cx.fold_state.scale * cx.cell_size.y;
-        cx.fold_state = FoldState::default();
+        cx.position_y += cx.fold.scale() * cx.cell_size.y;
+        cx.fold = Fold::default();
     }
 
     fn draw_inline(&mut self, cx: &mut CxDraw<'_, '_>, inline: Inline) {
         match inline {
-            Inline::Token {
-                is_inlay,
-                token,
-            } => {
+            Inline::Token { is_inlay, token } => {
                 let old_is_inlay = cx.is_inlay;
                 cx.is_inlay |= is_inlay;
                 self.draw_token(cx, token);
@@ -202,7 +198,7 @@ impl CodeEditor {
             }
             Inline::Break => {
                 cx.column_index = 0;
-                cx.position_y += cx.fold_state.scale * cx.cell_size.y;
+                cx.position_y += cx.fold.scale() * cx.cell_size.y;
             }
         }
     }
@@ -210,7 +206,7 @@ impl CodeEditor {
     fn draw_token(&mut self, cx: &mut CxDraw<'_, '_>, token: Token<'_>) {
         use crate::{state::TokenKind, StrExt};
 
-        self.draw_text.font_scale = cx.fold_state.scale;
+        self.draw_text.font_scale = cx.fold.scale();
         self.draw_text.color = if cx.is_inlay {
             self.inlay_color
         } else {
@@ -227,7 +223,7 @@ struct CxDraw<'a, 'b> {
     cx: &'a mut Cx2d<'b>,
     viewport_origin: DVec2,
     viewport_size: DVec2,
-    fold_state: FoldState,
+    fold: Fold,
     column_index: usize,
     position_y: f64,
     cell_size: DVec2,
@@ -237,7 +233,7 @@ struct CxDraw<'a, 'b> {
 impl<'a, 'b> CxDraw<'a, 'b> {
     fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.position_x(self.column_index) * self.cell_size.x,
+            x: self.fold.width(self.column_index) * self.cell_size.x,
             y: self.position_y,
         } - self.viewport_origin
     }
