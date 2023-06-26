@@ -749,8 +749,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -762,21 +762,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -786,8 +786,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -803,8 +803,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -824,8 +824,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -1645,17 +1645,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -2414,8 +2414,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -2427,21 +2427,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -2451,8 +2451,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -2468,8 +2468,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -2489,8 +2489,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -3310,17 +3310,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -4079,8 +4079,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -4092,21 +4092,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -4116,8 +4116,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -4133,8 +4133,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -4154,8 +4154,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -4975,17 +4975,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -5744,8 +5744,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -5757,21 +5757,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -5781,8 +5781,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -5798,8 +5798,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -5819,8 +5819,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -6640,17 +6640,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -7409,8 +7409,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -7422,21 +7422,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -7446,8 +7446,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -7463,8 +7463,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -7484,8 +7484,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -8305,17 +8305,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -9074,8 +9074,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -9087,21 +9087,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -9111,8 +9111,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -9128,8 +9128,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -9149,8 +9149,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -9970,17 +9970,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -10739,8 +10739,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -10752,21 +10752,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -10776,8 +10776,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -10793,8 +10793,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -10814,8 +10814,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -11635,17 +11635,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -12404,8 +12404,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -12417,21 +12417,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -12441,8 +12441,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -12458,8 +12458,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -12479,8 +12479,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -13300,17 +13300,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -14069,8 +14069,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -14082,21 +14082,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -14106,8 +14106,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -14123,8 +14123,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -14144,8 +14144,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -14965,17 +14965,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -15734,8 +15734,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -15747,21 +15747,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -15771,8 +15771,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -15788,8 +15788,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -15809,8 +15809,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -16630,17 +16630,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -17399,8 +17399,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -17412,21 +17412,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -17436,8 +17436,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -17453,8 +17453,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -17474,8 +17474,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -18295,17 +18295,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -19064,8 +19064,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -19077,21 +19077,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -19101,8 +19101,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -19118,8 +19118,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -19139,8 +19139,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -19960,17 +19960,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -20729,8 +20729,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -20742,21 +20742,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -20766,8 +20766,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -20783,8 +20783,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -20804,8 +20804,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -21625,17 +21625,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -22394,8 +22394,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -22407,21 +22407,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -22431,8 +22431,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -22448,8 +22448,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -22469,8 +22469,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -23290,17 +23290,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -24059,8 +24059,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -24072,21 +24072,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -24096,8 +24096,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -24113,8 +24113,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -24134,8 +24134,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -24955,17 +24955,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),
@@ -25724,8 +25724,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_offset: usize,
-    inlay_byte_offset: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -25737,21 +25737,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_offset) = self.breaks.as_slice().first() {
-            if *inlay_byte_offset == self.inlay_byte_offset {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            if *byte_offset == self.byte_offset {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_offset += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -25761,8 +25761,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_offset, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_offset - self.byte_offset);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -25778,8 +25778,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_offset += token.text.len();
-        self.inlay_byte_offset += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -25799,8 +25799,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_offset: 0,
-        inlay_byte_offset: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -26620,17 +26620,17 @@ pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_offset = 0;
+    let mut inlay_byte_index = 0;
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > wrap_column_index {
-                    breaks.push(inlay_byte_offset);
+                    breaks.push(inlay_byte_index);
                     column_index = 0;
                 }
-                inlay_byte_offset += token.text.len();
+                inlay_byte_index += token.text.len();
                 column_index += column_count;
             }
             _ => panic!(),

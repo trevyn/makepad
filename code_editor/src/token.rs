@@ -8,7 +8,7 @@ pub struct Token<'a> {
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct TokenInfo {
-    pub len: usize,
+    pub byte_len: usize,
     pub kind: TokenKind,
 }
 
@@ -29,7 +29,7 @@ impl<'a> Iterator for Tokens<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let info = self.token_infos.next()?;
-        let (text, remaining_text) = self.text.split_at(info.len);
+        let (text, remaining_text) = self.text.split_at(info.byte_len);
         self.text = remaining_text;
         Some(Token {
             text,
@@ -43,7 +43,7 @@ pub fn tokenize(text: &str) -> Vec<TokenInfo> {
 
     text.split_whitespace_boundaries()
         .map(|text| TokenInfo {
-            len: text.len(),
+            byte_len: text.len(),
             kind: if text.chars().next().unwrap().is_whitespace() {
                 TokenKind::Whitespace
             } else {

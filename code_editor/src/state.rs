@@ -209,23 +209,23 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn line(&self, index: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         crate::line(
-            &self.text[index],
-            &self.token_infos[index],
-            &self.inline_inlays[index],
-            &self.wraps[index],
-            Fold::new(&self.folded, &self.folding, &self.unfolding, index),
-            self.heights[index],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.wraps[line_index],
+            Fold::new(&self.folded, &self.folding, &self.unfolding, line_index),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_summed_height(&self, index: usize) -> f64 {
+    pub fn line_summed_height(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        self.summed_heights.borrow()[index]
+        self.summed_heights.borrow()[line_index]
     }
 
-    pub fn lines(&self, range: impl RangeBounds<usize>) -> Lines<'a> {
+    pub fn lines(&self, line_index_range: impl RangeBounds<usize>) -> Lines<'a> {
         use crate::line;
 
         line::lines(
@@ -237,13 +237,13 @@ impl<'a> View<'a> {
             &self.folding,
             &self.unfolding,
             self.heights,
-            range,
+            line_index_range,
         )
     }
 
-    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'a> {
+    pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'a> {
         block::blocks(
-            self.lines(line_range),
+            self.lines(line_index_range),
             self.block_inlays,
         )
     }
@@ -320,20 +320,20 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_first_line_starting_after_y(y)
     }
 
-    pub fn line(&self, index: usize) -> Line<'_> {
-        self.as_view().line(index)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_summed_height(&self, index: usize) -> f64 {
-        self.as_view().line_summed_height(index)
+    pub fn line_summed_height(&self, line_index: usize) -> f64 {
+        self.as_view().line_summed_height(line_index)
     }
 
-    pub fn lines(&self, range: impl RangeBounds<usize>) -> Lines<'_> {
-        self.as_view().lines(range)
+    pub fn lines(&self, line_index_range: impl RangeBounds<usize>) -> Lines<'_> {
+        self.as_view().lines(line_index_range)
     }
 
-    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'_> {
-        self.as_view().blocks(line_range)
+    pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'_> {
+        self.as_view().blocks(line_index_range)
     }
 
     pub fn set_max_column_count(&mut self, max_column_count: Option<usize>) {
@@ -433,25 +433,25 @@ impl<'a> ViewMut<'a> {
         self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, index: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[index] = Vec::new();
-        self.breaks[index] = if let &mut Some(max_column_count) = self.max_column_count {
-            wrap::wrap(self.line(index), max_column_count)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let &mut Some(max_column_count) = self.max_column_count {
+            wrap::wrap(self.line(line_index), max_column_count)
         } else {
             Vec::new()
         };
-        self.update_line_height(index);
+        self.update_line_height(line_index);
     }
 
-    fn update_line_height(&mut self, index: usize) {
-        let old_height = self.heights[index];
-        let line = self.line(index);
+    fn update_line_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold().height(line.row_count());
-        self.heights[index] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(index);
+            self.summed_heights.borrow_mut().truncate(line_index);
         }
     }
 }

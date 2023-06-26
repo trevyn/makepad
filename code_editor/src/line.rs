@@ -82,12 +82,12 @@ pub struct Lines<'a> {
     folding: &'a HashMap<usize, Folding>,
     unfolding: &'a HashMap<usize, Folding>,
     heights: Iter<'a, f64>,
-    index: usize,
+    line_index: usize,
 }
 
 impl<'a> Lines<'a> {
-    pub fn index(&self) -> usize {
-        self.index
+    pub fn line_index(&self) -> usize {
+        self.line_index
     }
 }
 
@@ -100,10 +100,10 @@ impl<'a> Iterator for Lines<'a> {
             self.token_infos.next()?,
             self.inlays.next()?,
             self.wraps.next()?,
-            Fold::new(&self.folded, &self.folding, &self.unfolding, self.index),
+            Fold::new(&self.folded, &self.folding, &self.unfolding, self.line_index),
             *self.heights.next()?,
         );
-        self.index += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -135,29 +135,29 @@ pub fn lines<'a>(
     folding: &'a HashMap<usize, Folding>,
     unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
-    range: impl RangeBounds<usize>,
+    line_index_range: impl RangeBounds<usize>,
 ) -> Lines<'a> {
     use std::ops::Bound;
 
-    let start = match range.start_bound() {
+    let start_line_index = match line_index_range.start_bound() {
         Bound::Included(&start) => start,
         Bound::Excluded(&start) => start + 1,
         Bound::Unbounded => 0,
     };
-    let end = match range.end_bound() {
+    let end_line_index = match line_index_range.end_bound() {
         Bound::Included(&end) => end + 1,
         Bound::Excluded(&end) => end,
         Bound::Unbounded => text.len(),
     };
     Lines {
-        text: text[start..end].iter(),
-        token_infos: token_infos[start..end].iter(),
-        inlays: inlays[start..end].iter(),
-        wraps: wraps[start..end].iter(),
+        text: text[start_line_index..end_line_index].iter(),
+        token_infos: token_infos[start_line_index..end_line_index].iter(),
+        inlays: inlays[start_line_index..end_line_index].iter(),
+        wraps: wraps[start_line_index..end_line_index].iter(),
         folded,
         folding,
         unfolding,
-        heights: heights[start..end].iter(),
-        index: start,
+        heights: heights[start_line_index..end_line_index].iter(),
+        line_index: start_line_index,
     }
 }
