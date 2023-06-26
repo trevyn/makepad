@@ -1,5 +1,5 @@
 use {
-    crate::{fold::Folding, inlay::InlineInlay, token::TokenInfo, Fold, Line},
+    crate::{inline, fold::Folding, token::TokenInfo, Fold, Line},
     std::{
         collections::{HashMap, HashSet},
         slice::Iter,
@@ -11,7 +11,7 @@ pub struct Lines<'a> {
     line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
-    inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
+    inlays: Iter<'a, Vec<(usize, inline::Inlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, Folding>,
@@ -45,7 +45,7 @@ pub fn lines<'a>(
     line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
-    inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
+    inlays: Iter<'a, Vec<(usize, inline::Inlay)>>,
     breaks: Iter<'a, Vec<usize>>,
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, Folding>,

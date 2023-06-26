@@ -1,6 +1,6 @@
 use {
     crate::{
-        inlines::Inline,
+        inline::Inline,
         state::{Block, SessionId},
         token::Token,
         Fold, Line, State,
@@ -196,7 +196,7 @@ impl CodeEditor {
                 self.draw_token(cx, token);
                 cx.is_inlay = old_is_inlay;
             }
-            Inline::Break => {
+            Inline::Wrap => {
                 cx.column_index = 0;
                 cx.position_y += cx.fold.scale() * cx.cell_size.y;
             }

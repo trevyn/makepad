@@ -4,7 +4,7 @@ pub mod char_ext;
 pub mod code_editor;
 pub mod fold;
 pub mod inlay;
-pub mod inlines;
+pub mod inline;
 pub mod line;
 pub mod lines;
 pub mod state;
@@ -18,7 +18,7 @@ pub use self::{
     char_ext::CharExt,
     code_editor::CodeEditor,
     fold::Fold,
-    inlines::{inlines, Inlines},
+    inline::{inlines, Inlines},
     line::Line,
     lines::{lines, Lines},
     state::State,

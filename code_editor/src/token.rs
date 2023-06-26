@@ -15,14 +15,14 @@ pub enum TokenKind {
 #[derive(Clone, Debug)]
 pub struct Tokens<'a> {
     text: &'a str,
-    infos: Iter<'a, TokenInfo>,
+    token_infos: Iter<'a, TokenInfo>,
 }
 
 impl<'a> Iterator for Tokens<'a> {
     type Item = Token<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let info = self.infos.next()?;
+        let info = self.token_infos.next()?;
         let (text, remaining_text) = self.text.split_at(info.len);
         self.text = remaining_text;
         Some(Token {
@@ -53,9 +53,9 @@ pub fn tokenize(text: &str) -> Vec<TokenInfo> {
         .collect()
 }
 
-pub fn tokens<'a>(text: &'a str, infos: &'a [TokenInfo]) -> Tokens<'a> {
+pub fn tokens<'a>(text: &'a str, token_infos: &'a [TokenInfo]) -> Tokens<'a> {
     Tokens {
         text,
-        infos: infos.iter(),
+        token_infos: token_infos.iter(),
     }
 }

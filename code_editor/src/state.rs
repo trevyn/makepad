@@ -3,8 +3,9 @@ pub use {
         arena::Id,
         blocks::Block,
         fold::Folding,
-        inlay::{BlockInlay, InlineInlay},
-        inlines::Inline,
+        inlay::BlockInlay,
+        inline,
+        inline::Inline,
         token::{Token, TokenInfo, TokenKind, Tokens},
         Arena, Blocks, Fold, Inlines, Line, Lines,
     },
@@ -40,10 +41,10 @@ impl State {
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
                         vec![
-                            (20, InlineInlay::new("X Y Z")),
-                            (40, InlineInlay::new("X Y Z")),
-                            (60, InlineInlay::new("X Y Z")),
-                            (80, InlineInlay::new("X Y Z")),
+                            (20, inline::Inlay::new("X Y Z")),
+                            (40, inline::Inlay::new("X Y Z")),
+                            (60, inline::Inlay::new("X Y Z")),
+                            (80, inline::Inlay::new("X Y Z")),
                         ]
                     })
                     .collect(),
@@ -163,7 +164,7 @@ pub struct View<'a> {
     wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
-    inline_inlays: &'a [Vec<(usize, InlineInlay)>],
+    inline_inlays: &'a [Vec<(usize, inline::Inlay)>],
     breaks: &'a [Vec<usize>],
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, Folding>,
@@ -276,7 +277,7 @@ pub struct ViewMut<'a> {
     wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
-    inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
+    inline_inlays: &'a mut [Vec<(usize, inline::Inlay)>],
     breaks: &'a mut [Vec<usize>],
     folded: &'a mut HashSet<usize>,
     folding: &'a mut HashMap<usize, Folding>,
@@ -453,7 +454,7 @@ impl<'a> ViewMut<'a> {
 struct Session {
     wrap_column_index: Option<usize>,
     document_id: Id<Document>,
-    inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
+    inline_inlays: Vec<Vec<(usize, inline::Inlay)>>,
     breaks: Vec<Vec<usize>>,
     folded: HashSet<usize>,
     folding: HashMap<usize, Folding>,

@@ -1,5 +1,5 @@
 use crate::{
-    inlay::InlineInlay,
+    inline::Inlay,
     token::{TokenInfo, Tokens},
     Fold, Inlines,
 };
@@ -8,7 +8,7 @@ use crate::{
 pub struct Line<'a> {
     text: &'a str,
     token_infos: &'a [TokenInfo],
-    inlays: &'a [(usize, InlineInlay)],
+    inlays: &'a [(usize, Inlay)],
     breaks: &'a [usize],
     fold: Fold,
     height: f64,
@@ -18,7 +18,7 @@ impl<'a> Line<'a> {
     pub fn new(
         text: &'a str,
         token_infos: &'a [TokenInfo],
-        inlays: &'a [(usize, InlineInlay)],
+        inlays: &'a [(usize, Inlay)],
         breaks: &'a [usize],
         fold: Fold,
         height: f64,
@@ -42,7 +42,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn column_count(&self) -> usize {
-        use {crate::inlines::Inline, crate::StrExt};
+        use {crate::inline::Inline, crate::StrExt};
 
         let mut column_count = 0;
         let mut max_column_count = 0;
@@ -52,7 +52,7 @@ impl<'a> Line<'a> {
                     column_count += token.text.column_count();
                     max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => column_count = 0,
+                Inline::Wrap => column_count = 0,
             }
         }
         max_column_count
@@ -77,6 +77,8 @@ impl<'a> Line<'a> {
     }
 
     pub fn inlines(&self) -> Inlines<'a> {
-        crate::inlines(self.tokens(), self.inlays.iter(), self.breaks.iter())
+        use crate::inline;
+        
+        inline::inlines(self.text, self.token_infos, self.inlays, self.breaks)
     }
 }
