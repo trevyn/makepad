@@ -1,5 +1,5 @@
 use {
-    crate::{Fold, token::TokenInfo, line::Lines, Line},
+    crate::{line::Lines, token::TokenInfo, Fold, Line},
     std::slice::Iter,
 };
 
@@ -50,7 +50,6 @@ impl Inlay {
         };
     }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {

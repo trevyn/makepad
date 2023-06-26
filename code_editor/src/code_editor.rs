@@ -52,22 +52,23 @@ impl CodeEditor {
         // Find index of one past the last line that is in the viewport.
         let end_line_index = view
             .find_first_line_starting_after_y((viewport_origin.y + viewport_size.y) / cell_size.y);
-        let start_line_y = view.line_y(start_line_index) * cell_size.y;
+        let start_line_y = if start_line_index == 0 {
+            0.0
+        } else {
+            view.line_summed_height(start_line_index - 1) * cell_size.y
+        };
 
         // Word wrapping
         state
             .view_mut(session_id)
-            .set_wrap_column_index(Some((viewport_size.x / cell_size.x) as usize));
-        // After word wrapping, the position of the first line will have shifted. Adjust the origin
-        // of the viewport so that its in the same position relative to that line.
-        let old_start_line_y = start_line_y;
-        let start_line_y = state.view(session_id).line_y(start_line_index) * cell_size.y;
-        viewport_origin.y += start_line_y - old_start_line_y;
+            .set_max_column_count(Some((viewport_size.x / cell_size.x) as usize));
+
+            
 
         let view = state.view(session_id);
         let mut max_width = 0.0;
         let mut height = 0.0;
-        for block in view.blocks(0, view.line_count()) {
+        for block in view.blocks(..) {
             match block {
                 Block::Line { line, .. } => {
                     max_width = max_width.max(line.width()) * cell_size.x;
@@ -90,7 +91,7 @@ impl CodeEditor {
         };
         for block in state
             .view(session_id)
-            .blocks(start_line_index, end_line_index)
+            .blocks(start_line_index..end_line_index)
         {
             self.draw_block(&mut cx, block);
         }
@@ -99,17 +100,8 @@ impl CodeEditor {
 
         // Update fold animations
         if state.view_mut(session_id).update_folds() {
-            // After updating the fold animations, the position of the first line will have
-            // shifted. Adjust the origin of the viewport so that its in the same position
-            // relative to that line.
-            let old_start_line_y = start_line_y;
-            let start_line_y = state.view(session_id).line_y(start_line_index) * cell_size.y;
-            viewport_origin.y += start_line_y - old_start_line_y;
             cx.cx.redraw_all();
         }
-
-        // Save the position of the scroll bar after we adjusted it.
-        self.scroll_bars.set_scroll_y(cx.cx, viewport_origin.y);
     }
 
     pub fn handle_event(
