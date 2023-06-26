@@ -1,5 +1,5 @@
 use {
-    crate::{inlay::BlockInlay, Line, Lines},
+    crate::{inlay::BlockInlay, Line, line::Lines},
     std::slice::Iter,
 };
 

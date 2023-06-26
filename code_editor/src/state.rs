@@ -4,10 +4,12 @@ pub use {
         blocks::Block,
         fold::Folding,
         inlay::BlockInlay,
+        line::Lines,
         inline,
-        inline::Inline,
+        Inline,
+        inline::Inlines,
         token::{Token, TokenInfo, TokenKind, Tokens},
-        Arena, Blocks, Fold, Inlines, Line, Lines,
+        Arena, Blocks, Fold, Line,
     },
     std::{
         cell::RefCell,
@@ -224,16 +226,18 @@ impl<'a> View<'a> {
     }
 
     pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
-        crate::lines(
-            start_line_index,
-            self.text[start_line_index..end_line_index].iter(),
-            self.token_infos[start_line_index..end_line_index].iter(),
-            self.inline_inlays[start_line_index..end_line_index].iter(),
-            self.breaks[start_line_index..end_line_index].iter(),
+        use crate::line;
+
+        line::lines(
+            self.text,
+            self.token_infos,
+            self.inline_inlays,
+            self.breaks,
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_index..end_line_index].iter(),
+            self.heights,
+            start_line_index..end_line_index,
         )
     }
 
