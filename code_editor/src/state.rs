@@ -1,15 +1,14 @@
 pub use {
     crate::{
         arena::Id,
-        blocks::Block,
+        block,
+        block::Blocks,
         fold::Folding,
-        inlay::BlockInlay,
-        line::Lines,
         inline,
-        Inline,
         inline::Inlines,
+        line::Lines,
         token::{Token, TokenInfo, TokenKind, Tokens},
-        Arena, Blocks, Fold, Line,
+        Arena, Block, Fold, Inline, Line,
     },
     std::{
         cell::RefCell,
@@ -69,7 +68,7 @@ impl State {
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
         for index in 0..19 {
-            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
+            view.insert_block_inlay(index * 10, block::Inlay::new("XXX YYY ZZZ"));
         }
         for line_index in 0..view.line_count() {
             view.update_height(line_index);
@@ -173,7 +172,7 @@ pub struct View<'a> {
     unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
     summed_heights: &'a RefCell<Vec<f64>>,
-    block_inlays: &'a Vec<(usize, BlockInlay)>,
+    block_inlays: &'a Vec<(usize, block::Inlay)>,
 }
 
 impl<'a> View<'a> {
@@ -206,7 +205,7 @@ impl<'a> View<'a> {
     }
 
     pub fn line(&self, line_index: usize) -> Line<'a> {
-        Line::new(
+        crate::line(
             &self.text[line_index],
             &self.token_infos[line_index],
             &self.inline_inlays[line_index],
@@ -242,15 +241,9 @@ impl<'a> View<'a> {
     }
 
     pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
-        crate::blocks(
-            start_line_index,
+        block::blocks(
             self.lines(start_line_index, end_line_index),
-            self.block_inlays[self
-                .block_inlays
-                .iter()
-                .position(|(line_index, _)| *line_index >= start_line_index)
-                .unwrap_or(self.block_inlays.len())..]
-                .iter(),
+            self.block_inlays,
         )
     }
 
@@ -288,7 +281,7 @@ pub struct ViewMut<'a> {
     unfolding: &'a mut HashMap<usize, Folding>,
     heights: &'a mut [f64],
     summed_heights: &'a mut RefCell<Vec<f64>>,
-    block_inlays: &'a mut Vec<(usize, BlockInlay)>,
+    block_inlays: &'a mut Vec<(usize, block::Inlay)>,
     new_folding: &'a mut HashMap<usize, Folding>,
     new_unfolding: &'a mut HashMap<usize, Folding>,
 }
@@ -419,7 +412,7 @@ impl<'a> ViewMut<'a> {
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: block::Inlay) {
         let index = match self
             .block_inlays
             .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
@@ -465,7 +458,7 @@ struct Session {
     unfolding: HashMap<usize, Folding>,
     heights: Vec<f64>,
     summed_heights: RefCell<Vec<f64>>,
-    block_inlays: Vec<(usize, BlockInlay)>,
+    block_inlays: Vec<(usize, block::Inlay)>,
     new_folding: HashMap<usize, Folding>,
     new_unfolding: HashMap<usize, Folding>,
 }

@@ -1,5 +1,11 @@
 use std::slice::Iter;
 
+#[derive(Clone, Copy, Debug)]
+pub struct Token<'a> {
+    pub text: &'a str,
+    pub kind: TokenKind,
+}
+
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct TokenInfo {
     pub len: usize,
@@ -30,12 +36,6 @@ impl<'a> Iterator for Tokens<'a> {
             kind: info.kind,
         })
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Token<'a> {
-    pub text: &'a str,
-    pub kind: TokenKind,
 }
 
 pub fn tokenize(text: &str) -> Vec<TokenInfo> {

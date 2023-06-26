@@ -1,9 +1,8 @@
 pub mod arena;
-pub mod blocks;
+pub mod block;
 pub mod char_ext;
 pub mod code_editor;
 pub mod fold;
-pub mod inlay;
 pub mod inline;
 pub mod line;
 pub mod state;
@@ -13,12 +12,12 @@ pub mod wrap;
 
 pub use self::{
     arena::Arena,
-    blocks::{blocks, Blocks},
+    block::Block,
     char_ext::CharExt,
     code_editor::CodeEditor,
     fold::Fold,
     inline::Inline,
-    line::Line,
+    line::{line, Line},
     state::State,
     str_ext::StrExt,
 };

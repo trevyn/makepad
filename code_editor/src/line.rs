@@ -2,7 +2,7 @@ use {
     crate::{
         fold::Folding,
         inline,
-        inline::{Inlines, Inlay},
+        inline::{Inlay, Inlines},
         token::{TokenInfo, Tokens},
         Fold,
     },
@@ -13,70 +13,17 @@ use {
     },
 };
 
-#[derive(Clone, Debug)]
-pub struct Lines<'a> {
-    text: Iter<'a, String>,
-    token_infos: Iter<'a, Vec<TokenInfo>>,
-    inlays: Iter<'a, Vec<(usize, inline::Inlay)>>,
-    wraps: Iter<'a, Vec<usize>>,
-    folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, Folding>,
-    unfolding: &'a HashMap<usize, Folding>,
-    heights: Iter<'a, f64>,
-    index: usize,
-}
-
-impl<'a> Iterator for Lines<'a> {
-    type Item = Line<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let line = Line::new(
-            self.text.next()?,
-            self.token_infos.next()?,
-            self.inlays.next()?,
-            self.wraps.next()?,
-            Fold::new(
-                &self.folded,
-                &self.folding,
-                &self.unfolding,
-                self.index,
-            ),
-            *self.heights.next()?,
-        );
-        self.index += 1;
-        Some(line)
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct Line<'a> {
     text: &'a str,
     token_infos: &'a [TokenInfo],
     inlays: &'a [(usize, Inlay)],
-    wraps: &'a [usize],
+    breaks: &'a [usize],
     fold: Fold,
     height: f64,
 }
 
 impl<'a> Line<'a> {
-    pub fn new(
-        text: &'a str,
-        token_infos: &'a [TokenInfo],
-        inlays: &'a [(usize, Inlay)],
-        wraps: &'a [usize],
-        fold: Fold,
-        height: f64,
-    ) -> Self {
-        Self {
-            text,
-            token_infos,
-            inlays,
-            wraps,
-            fold,
-            height,
-        }
-    }
-
     pub fn fold(&self) -> Fold {
         self.fold
     }
@@ -99,7 +46,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn row_count(&self) -> usize {
-        self.wraps.len() + 1
+        self.breaks.len() + 1
     }
 
     pub fn width(&self) -> f64 {
@@ -121,9 +68,61 @@ impl<'a> Line<'a> {
     }
 
     pub fn inlines(&self) -> Inlines<'a> {
-        use crate::inline;
-        
-        inline::inlines(self.tokens(), self.inlays, self.wraps)
+        inline::inlines(self.tokens(), self.inlays, self.breaks)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Lines<'a> {
+    text: Iter<'a, String>,
+    token_infos: Iter<'a, Vec<TokenInfo>>,
+    inlays: Iter<'a, Vec<(usize, inline::Inlay)>>,
+    wraps: Iter<'a, Vec<usize>>,
+    folded: &'a HashSet<usize>,
+    folding: &'a HashMap<usize, Folding>,
+    unfolding: &'a HashMap<usize, Folding>,
+    heights: Iter<'a, f64>,
+    index: usize,
+}
+
+impl<'a> Lines<'a> {
+    pub fn index(&self) -> usize {
+        self.index
+    }
+}
+
+impl<'a> Iterator for Lines<'a> {
+    type Item = Line<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let line = line(
+            self.text.next()?,
+            self.token_infos.next()?,
+            self.inlays.next()?,
+            self.wraps.next()?,
+            Fold::new(&self.folded, &self.folding, &self.unfolding, self.index),
+            *self.heights.next()?,
+        );
+        self.index += 1;
+        Some(line)
+    }
+}
+
+pub fn line<'a>(
+    text: &'a str,
+    token_infos: &'a [TokenInfo],
+    inlays: &'a [(usize, Inlay)],
+    breaks: &'a [usize],
+    fold: Fold,
+    height: f64,
+) -> Line<'a> {
+    Line {
+        text,
+        token_infos,
+        inlays,
+        breaks,
+        fold,
+        height,
     }
 }
 

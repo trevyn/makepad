@@ -1,10 +1,13 @@
 use {
-    crate::{
-        inlay::InlineInlay,
-        token::{Token, Tokens, TokenInfo},
-    },
+    crate::token::{Token, TokenInfo, Tokens},
     std::slice::Iter,
 };
+
+#[derive(Clone, Copy, Debug)]
+pub enum Inline<'a> {
+    Token { is_inlay: bool, token: Token<'a> },
+    Wrap,
+}
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct Inlay {
@@ -91,12 +94,6 @@ impl<'a> Iterator for Inlines<'a> {
             token,
         })
     }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum Inline<'a> {
-    Token { is_inlay: bool, token: Token<'a> },
-    Wrap,
 }
 
 pub fn inlines<'a>(
