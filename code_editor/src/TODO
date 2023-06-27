@@ -1,0 +1,3 @@
+- Decide whether or not to use impl RangeBounds<usize> in lines, blocks, and layout
+- Decide whether or not to use impl Into<String> in block::Inlay and inline::Inlay
+- Finish selection drawing code

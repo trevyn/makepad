@@ -35,20 +35,20 @@ impl Fold {
         }
     }
 
-    pub fn width(self, column_count: usize) -> f64 {
+    pub fn x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
             Self::Folding(folding) | Self::Unfolding(folding) => {
-                let column_count_before = column_count.min(folding.column_index);
-                let column_count_after = column_count - column_count_before;
+                let column_count_before = column_index.min(folding.column_index);
+                let column_count_after = column_index - column_count_before;
                 column_count_before as f64 + folding.scale * column_count_after as f64
             }
-            Self::Unfolded => column_count as f64,
+            Self::Unfolded => column_index as f64,
         }
     }
 
-    pub fn height(self, row_count: usize) -> f64 {
-        self.scale() * row_count as f64
+    pub fn width(self, column_index: usize, column_count: usize) -> f64 {
+        self.x(column_index + column_count) - self.x(column_index)
     }
 }
 

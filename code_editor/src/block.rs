@@ -57,6 +57,12 @@ pub struct Blocks<'a> {
     inlays: Iter<'a, (usize, Inlay)>,
 }
 
+impl<'a> Blocks<'a> {
+    pub fn line_index(&self) -> usize {
+        self.lines.line_index()
+    }
+}
+
 impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 

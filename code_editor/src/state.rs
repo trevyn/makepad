@@ -1,15 +1,7 @@
-pub use {
+use {
     crate::{
-        arena::Id,
-        block,
-        block::Blocks,
-        fold::Folding,
-        inline,
-        inline::Inlines,
-        line::Lines,
-        selection::Region,
-        token::{Token, TokenInfo, TokenKind, Tokens},
-        Arena, Block, Fold, Inline, Line,
+        arena::Id, block, block::Blocks, fold::Folding, inline, line::Lines, token::TokenInfo,
+        Arena, Block, Fold, Layout, Line, Selection,
     },
     std::{
         cell::RefCell,
@@ -63,7 +55,7 @@ impl State {
                 heights: (0..document.text.len()).map(|_| 0.0).collect(),
                 summed_heights: RefCell::new(Vec::new()),
                 block_inlays: Vec::new(),
-                selection: vec![Region::default()],
+                selection: Selection::new(),
                 tmp_folding: HashMap::new(),
             }),
         );
@@ -176,7 +168,7 @@ pub struct View<'a> {
     heights: &'a [f64],
     summed_heights: &'a RefCell<Vec<f64>>,
     block_inlays: &'a [(usize, block::Inlay)],
-    selection: &'a [Region],
+    selection: &'a Selection,
 }
 
 impl<'a> View<'a> {
@@ -228,7 +220,7 @@ impl<'a> View<'a> {
         self.summed_heights.borrow()[line_index]
     }
 
-    pub fn lines(&self, line_index_range: impl RangeBounds<usize>) -> Lines<'a> {
+    pub fn lines(&self, line_range: impl RangeBounds<usize>) -> Lines<'a> {
         use crate::line;
 
         line::lines(
@@ -240,15 +232,19 @@ impl<'a> View<'a> {
             &self.folding,
             &self.unfolding,
             self.heights,
-            line_index_range,
+            line_range,
         )
     }
 
-    pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'a> {
-        block::blocks(self.lines(line_index_range), self.block_inlays)
+    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'a> {
+        block::blocks(self.lines(line_range), self.block_inlays)
     }
 
-    pub fn selection(&self) -> &'a [Region] {
+    pub fn layout(&self, line_range: impl RangeBounds<usize>) -> Layout<'a> {
+        crate::layout(self, line_range)
+    }
+
+    pub fn selection(&self) -> &'a Selection {
         &self.selection
     }
 
@@ -264,7 +260,7 @@ impl<'a> View<'a> {
         for block in self.blocks(start..) {
             match block {
                 Block::Line { is_inlay, line } => {
-                    summed_height += line.height();
+                    summed_height += line.fold().scale();
                     if !is_inlay {
                         self.summed_heights.borrow_mut().push(summed_height);
                     }
@@ -287,7 +283,7 @@ pub struct ViewMut<'a> {
     heights: &'a mut [f64],
     summed_heights: &'a mut RefCell<Vec<f64>>,
     block_inlays: &'a mut Vec<(usize, block::Inlay)>,
-    selection: &'a mut Vec<Region>,
+    selection: &'a mut Selection,
     tmp_folding: &'a mut HashMap<usize, Folding>,
 }
 
@@ -333,15 +329,19 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_summed_height(line_index)
     }
 
-    pub fn lines(&self, line_index_range: impl RangeBounds<usize>) -> Lines<'_> {
-        self.as_view().lines(line_index_range)
+    pub fn lines(&self, line_range: impl RangeBounds<usize>) -> Lines<'_> {
+        self.as_view().lines(line_range)
     }
 
-    pub fn blocks(&self, line_index_range: impl RangeBounds<usize>) -> Blocks<'_> {
-        self.as_view().blocks(line_index_range)
+    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'_> {
+        self.as_view().blocks(line_range)
     }
 
-    pub fn selection(&self) -> &[Region] {
+    pub fn layout(&self, line_range: impl RangeBounds<usize>) -> Layout<'_> {
+        self.as_view().layout(line_range)
+    }
+
+    pub fn selection(&self) -> &Selection {
         self.as_view().selection()
     }
 
@@ -457,7 +457,7 @@ impl<'a> ViewMut<'a> {
     fn update_line_height(&mut self, line_index: usize) {
         let old_height = self.heights[line_index];
         let line = self.line(line_index);
-        let new_height = line.fold().height(line.row_count());
+        let new_height = line.row_count() as f64 * line.fold().scale();
         self.heights[line_index] = new_height;
         if old_height != new_height {
             self.summed_heights.borrow_mut().truncate(line_index);
@@ -477,7 +477,7 @@ struct Session {
     heights: Vec<f64>,
     summed_heights: RefCell<Vec<f64>>,
     block_inlays: Vec<(usize, block::Inlay)>,
-    selection: Vec<Region>,
+    selection: Selection,
     tmp_folding: HashMap<usize, Folding>,
 }
 

@@ -1,8 +1,7 @@
 use {
-    crate::{
-        block::Blocks, inline::Inlines, state::SessionId, token::Token, Block, Fold, Inline, State,
-    },
+    crate::{position::PositionWithAffinity, state::SessionId, Block, Range, State, Vector},
     makepad_widgets::*,
+    std::iter::Peekable,
 };
 
 live_design! {
@@ -39,11 +38,11 @@ pub struct CodeEditor {
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        use crate::token::TokenKind;
+        use crate::{layout::EventKind, position::Affinity, token::TokenKind, Position};
 
         self.scroll_bars.begin(cx, self.walk, Layout::default());
 
-        let viewport_origin = self.scroll_bars.get_scroll_pos();
+        let viewport_position = self.scroll_bars.get_scroll_pos();
         let viewport_size = cx.turtle().rect().size;
         let cell_size = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
@@ -52,40 +51,69 @@ impl CodeEditor {
             .set_max_column_count(Some((viewport_size.x / cell_size.x) as usize));
 
         let view = state.view(session_id);
-        let start_line_index = view.find_first_line_ending_after_y(viewport_origin.y / cell_size.y);
-        let end_line_index = view
-            .find_first_line_starting_after_y((viewport_origin.y + viewport_size.y) / cell_size.y);
-        for event in (Draw {
-            viewport_origin,
-            cell_size,
-            y: if start_line_index == 0 {
-                0.0
-            } else {
-                view.line_summed_height(start_line_index - 1) * cell_size.y
-            },
-            column_index: 0,
-            state: Some(DrawState::Blocks {
-                blocks: state
-                    .view(session_id)
-                    .blocks(start_line_index..end_line_index),
-            }),
-        }) {
+        let line_start = view.find_first_line_ending_after_y(viewport_position.y / cell_size.y);
+        let line_end = view.find_first_line_starting_after_y(
+            (viewport_position.y + viewport_size.y) / cell_size.y,
+        );
+        let start_line_y = if line_start == 0 {
+            0.0
+        } else {
+            view.line_summed_height(line_start - 1)
+        };
+
+        for event in view.layout(line_start..line_end) {
             match event.kind {
-                DrawEventKind::Token { is_inlay, token } => {
-                    if token.kind == TokenKind::Whitespace {
+                EventKind::LineStart { scale } => {
+                    self.draw_text.font_scale = scale;
+                }
+                EventKind::Grapheme {
+                    is_inlay,
+                    token_kind,
+                    grapheme,
+                    ..
+                } => {
+                    if token_kind == TokenKind::Whitespace {
                         continue;
                     }
-                    self.draw_text.font_scale = event.scale;
                     self.draw_text.color = if is_inlay {
                         self.inlay_color
                     } else {
                         self.token_color
                     };
-                    self.draw_text.draw_abs(cx, event.position, token.text);
+                    self.draw_text.draw_abs(
+                        cx,
+                        DVec2 {
+                            x: event.position.x,
+                            y: event.position.y,
+                        } * cell_size
+                            - viewport_position,
+                        grapheme,
+                    );
                 }
                 _ => {}
             }
         }
+
+        DrawOverlayContext {
+            viewport_position,
+            cell_size,
+            active_range: None,
+            regions: view
+                .selection()
+                .iter()
+                .map(|region| region.range())
+                .peekable(),
+            logical_position: PositionWithAffinity {
+                position: Position {
+                    line_index: line_start,
+                    byte_index: 0,
+                },
+                affinity: Affinity::Before,
+            },
+            physical_position: DVec2::new(),
+            scale: 0.0,
+        }
+        .draw_overlay(view.layout(line_start..line_end));
 
         let view = state.view(session_id);
         let mut max_width = 0.0;
@@ -160,118 +188,118 @@ impl CodeEditor {
     }
 }
 
-struct Draw<'a> {
-    viewport_origin: DVec2,
+#[derive(Clone, Debug)]
+struct DrawOverlayContext<I>
+where
+    I: Iterator<Item = Range<PositionWithAffinity>>,
+{
+    viewport_position: DVec2,
     cell_size: DVec2,
-    y: f64,
-    column_index: usize,
-    state: Option<DrawState<'a>>,
-}
-
-impl<'a> Draw<'a> {
-    fn create_event(&self, fold: Fold, kind: DrawEventKind<'a>) -> DrawEvent<'a> {
-        DrawEvent {
-            position: DVec2 {
-                x: fold.width(self.column_index) * self.cell_size.x,
-                y: self.y,
-            } - self.viewport_origin,
-            scale: fold.scale(),
-            kind,
-        }
-    }
-}
-
-impl<'a> Iterator for Draw<'a> {
-    type Item = DrawEvent<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        use crate::StrExt;
-
-        loop {
-            break match self.state.take().unwrap() {
-                DrawState::Blocks { mut blocks } => match blocks.next() {
-                    Some(Block::Line { is_inlay, line, .. }) => {
-                        self.state = Some(DrawState::Inlines {
-                            blocks,
-                            is_inlay,
-                            fold: line.fold(),
-                            inlines: line.inlines(),
-                        });
-                        continue;
-                    }
-                    None => None,
-                },
-                DrawState::Inlines {
-                    blocks,
-                    is_inlay: is_inlay_line,
-                    fold,
-                    mut inlines,
-                } => Some(match inlines.next() {
-                    Some(inline) => {
-                        let event = match inline {
-                            Inline::Token {
-                                is_inlay: is_inlay_token,
-                                token,
-                            } => {
-                                let event = self.create_event(
-                                    fold,
-                                    DrawEventKind::Token {
-                                        is_inlay: is_inlay_line || is_inlay_token,
-                                        token,
-                                    },
-                                );
-                                self.column_index += token.text.column_count();
-                                event
-                            }
-                            Inline::Wrap => {
-                                let event = self.create_event(fold, DrawEventKind::NewRow);
-                                self.column_index = 0;
-                                self.y += fold.scale() * self.cell_size.y;
-                                event
-                            }
-                        };
-                        self.state = Some(DrawState::Inlines {
-                            blocks,
-                            is_inlay: is_inlay_line,
-                            fold,
-                            inlines,
-                        });
-                        event
-                    }
-                    None => {
-                        let event = self.create_event(fold, DrawEventKind::NewRow);
-                        self.column_index = 0;
-                        self.y += fold.scale() * self.cell_size.y;
-                        self.state = Some(DrawState::Blocks { blocks });
-                        event
-                    }
-                }),
-            };
-        }
-    }
-}
-
-enum DrawState<'a> {
-    Blocks {
-        blocks: Blocks<'a>,
-    },
-    Inlines {
-        blocks: Blocks<'a>,
-        is_inlay: bool,
-        fold: Fold,
-        inlines: Inlines<'a>,
-    },
-}
-
-#[derive(Clone, Copy, Debug)]
-struct DrawEvent<'a> {
-    position: DVec2,
+    active_range: Option<ActiveRange>,
+    regions: Peekable<I>,
+    logical_position: PositionWithAffinity,
+    physical_position: DVec2,
     scale: f64,
-    kind: DrawEventKind<'a>,
 }
 
-#[derive(Clone, Copy, Debug)]
-enum DrawEventKind<'a> {
-    Token { is_inlay: bool, token: Token<'a> },
-    NewRow,
+impl<I> DrawOverlayContext<I>
+where
+    I: Iterator<Item = Range<PositionWithAffinity>>,
+{
+    fn draw_overlay(&mut self, layout: crate::Layout<'_>) {
+        use crate::{layout::EventKind, position::Affinity};
+
+        for event in layout {
+            self.physical_position = DVec2 {
+                x: event.position.x,
+                y: event.position.y,
+            } * self.cell_size
+                - self.viewport_position;
+            match event.kind {
+                EventKind::LineStart { scale } => {
+                    self.scale = scale;
+                    self.handle_event();
+                    self.logical_position.affinity = Affinity::After;
+                }
+                EventKind::LineEnd => {
+                    self.handle_event();
+                    if self.active_range.is_some() {
+                        self.draw_rect();
+                    }
+                    self.logical_position.position.line_index += 1;
+                    self.logical_position.position.byte_index = 0;
+                    self.logical_position.affinity = Affinity::Before;
+                }
+                EventKind::Grapheme {
+                    is_inlay: false,
+                    width,
+                    grapheme,
+                    ..
+                } => {
+                    self.handle_event();
+                    self.logical_position.position.byte_index += grapheme.len();
+                    self.logical_position.affinity = Affinity::Before;
+                    self.physical_position.x += width * self.cell_size.x;
+                    self.handle_event();
+                    self.logical_position.affinity = Affinity::After;
+                }
+                EventKind::Wrap => {
+                    if self.active_range.is_some() {
+                        self.draw_rect();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_event(&mut self) {
+        if self
+            .regions
+            .peek()
+            .map_or(false, |region| region.start == self.logical_position)
+        {
+            self.begin();
+            self.active_range = Some(ActiveRange {
+                range: self.regions.next().unwrap(),
+                start_x: self.physical_position.x,
+            });
+        }
+        if self
+            .active_range
+            .as_ref()
+            .map_or(false, |range| range.range.end == self.logical_position)
+        {
+            self.draw_rect();
+            self.end();
+            let active_region = self.active_range.take().unwrap();
+        }
+    }
+
+    fn begin(&mut self) {
+        println!("BEGIN");
+        // TODO
+    }
+
+    fn end(&mut self) {
+        println!("END");
+        // TODO
+    }
+
+    fn draw_rect(&mut self) {
+        use std::mem;
+
+        let start_x = mem::replace(&mut self.active_range.as_mut().unwrap().start_x, 0.0);
+        println!(
+            "DRAW RECT {:?} {:?} {:?}",
+            start_x, self.physical_position, self.scale
+        );
+        // TODO
+    }
+}
+
+#[derive(Clone, Debug)]
+struct ActiveRange {
+    range: Range<PositionWithAffinity>,
+    start_x: f64,
 }

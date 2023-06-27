@@ -50,7 +50,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold.width(self.column_count())
+        self.fold.width(0, self.column_count())
     }
 
     pub fn height(&self) -> f64 {
@@ -140,29 +140,29 @@ pub fn lines<'a>(
     folding: &'a HashMap<usize, Folding>,
     unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
-    line_index_range: impl RangeBounds<usize>,
+    line_range: impl RangeBounds<usize>,
 ) -> Lines<'a> {
     use std::ops::Bound;
 
-    let start_line_index = match line_index_range.start_bound() {
+    let line_start = match line_range.start_bound() {
         Bound::Included(&start) => start,
         Bound::Excluded(&start) => start + 1,
         Bound::Unbounded => 0,
     };
-    let end_line_index = match line_index_range.end_bound() {
+    let line_end = match line_range.end_bound() {
         Bound::Included(&end) => end + 1,
         Bound::Excluded(&end) => end,
         Bound::Unbounded => text.len(),
     };
     Lines {
-        text: text[start_line_index..end_line_index].iter(),
-        token_infos: token_infos[start_line_index..end_line_index].iter(),
-        inlays: inlays[start_line_index..end_line_index].iter(),
-        wraps: wraps[start_line_index..end_line_index].iter(),
+        text: text[line_start..line_end].iter(),
+        token_infos: token_infos[line_start..line_end].iter(),
+        inlays: inlays[line_start..line_end].iter(),
+        wraps: wraps[line_start..line_end].iter(),
         folded,
         folding,
         unfolding,
-        heights: heights[start_line_index..end_line_index].iter(),
-        line_index: start_line_index,
+        heights: heights[line_start..line_end].iter(),
+        line_index: line_start,
     }
 }
