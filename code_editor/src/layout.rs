@@ -1,9 +1,9 @@
 use {
     crate::{
-        block::Blocks, inline::Inlines, state::View, str_ext::Graphemes, token::TokenKind, Fold,
+        inlines::Inlines, state::View, str::Graphemes, tokenize::TokenKind, Blocks, Fold,
         Vector,
     },
-    std::ops::RangeBounds,
+    std::ops::Range,
 };
 
 #[derive(Clone, Debug)]
@@ -29,7 +29,7 @@ impl<'a> Iterator for Layout<'a> {
     type Item = Event<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        use crate::{Block, Inline, StrExt};
+        use crate::{blocks::Block, inlines::Inline, str::StrExt};
 
         loop {
             match self.state.take().unwrap() {
@@ -184,12 +184,12 @@ enum State<'a> {
     },
 }
 
-pub fn layout<'a>(view: &View<'a>, line_range: impl RangeBounds<usize>) -> Layout<'a> {
-    let blocks = view.blocks(line_range);
-    let y = if blocks.line_index() == 0 {
+pub fn layout<'a>(view: &View<'a>, line_range: Range<usize>) -> Layout<'a> {
+    let blocks = view.blocks(line_range.clone());
+    let y = if line_range.start == 0 {
         0.0
     } else {
-        view.line_summed_height(blocks.line_index() - 1)
+        view.line_summed_height(line_range.start - 1)
     };
     Layout {
         state: Some(State::Blocks { blocks }),

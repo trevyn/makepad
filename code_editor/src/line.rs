@@ -1,23 +1,10 @@
-use {
-    crate::{
-        fold::Folding,
-        inline,
-        inline::{Inlay, Inlines},
-        token::{TokenInfo, Tokens},
-        Fold,
-    },
-    std::{
-        collections::{HashMap, HashSet},
-        ops::RangeBounds,
-        slice::Iter,
-    },
-};
+use crate::{inlays::InlineInlay, tokenize::TokenInfo, Fold, Inlines, Tokens};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Line<'a> {
     text: &'a str,
     token_infos: &'a [TokenInfo],
-    inlays: &'a [(usize, Inlay)],
+    inlays: &'a [(usize, InlineInlay)],
     breaks: &'a [usize],
     fold: Fold,
     height: f64,
@@ -29,7 +16,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn column_count(&self) -> usize {
-        use crate::{Inline, StrExt};
+        use crate::{inlines::Inline, str::StrExt};
 
         let mut max_column_count = 0;
         let mut column_count = 0;
@@ -62,61 +49,18 @@ impl<'a> Line<'a> {
     }
 
     pub fn tokens(&self) -> Tokens<'a> {
-        use crate::token;
-
-        token::tokens(self.text, self.token_infos)
+        crate::tokens(self.text, self.token_infos)
     }
 
     pub fn inlines(&self) -> Inlines<'a> {
-        inline::inlines(self.tokens(), self.inlays, self.breaks)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Lines<'a> {
-    text: Iter<'a, String>,
-    token_infos: Iter<'a, Vec<TokenInfo>>,
-    inlays: Iter<'a, Vec<(usize, inline::Inlay)>>,
-    wraps: Iter<'a, Vec<usize>>,
-    folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, Folding>,
-    unfolding: &'a HashMap<usize, Folding>,
-    heights: Iter<'a, f64>,
-    line_index: usize,
-}
-
-impl<'a> Lines<'a> {
-    pub fn line_index(&self) -> usize {
-        self.line_index
-    }
-}
-
-impl<'a> Iterator for Lines<'a> {
-    type Item = Line<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let line = line(
-            self.text.next()?,
-            self.token_infos.next()?,
-            self.inlays.next()?,
-            self.wraps.next()?,
-            Fold::new(
-                &self.folded,
-                &self.folding,
-                &self.unfolding,
-                self.line_index,
-            ),
-            *self.heights.next()?,
-        );
-        self.line_index += 1;
-        Some(line)
+        crate::inlines(self.tokens(), self.inlays, self.breaks)
     }
 }
 
 pub fn line<'a>(
     text: &'a str,
     token_infos: &'a [TokenInfo],
-    inlays: &'a [(usize, Inlay)],
+    inlays: &'a [(usize, InlineInlay)],
     breaks: &'a [usize],
     fold: Fold,
     height: f64,
@@ -128,41 +72,5 @@ pub fn line<'a>(
         breaks,
         fold,
         height,
-    }
-}
-
-pub fn lines<'a>(
-    text: &'a [String],
-    token_infos: &'a [Vec<TokenInfo>],
-    inlays: &'a [Vec<(usize, inline::Inlay)>],
-    wraps: &'a [Vec<usize>],
-    folded: &'a HashSet<usize>,
-    folding: &'a HashMap<usize, Folding>,
-    unfolding: &'a HashMap<usize, Folding>,
-    heights: &'a [f64],
-    line_range: impl RangeBounds<usize>,
-) -> Lines<'a> {
-    use std::ops::Bound;
-
-    let line_start = match line_range.start_bound() {
-        Bound::Included(&start) => start,
-        Bound::Excluded(&start) => start + 1,
-        Bound::Unbounded => 0,
-    };
-    let line_end = match line_range.end_bound() {
-        Bound::Included(&end) => end + 1,
-        Bound::Excluded(&end) => end,
-        Bound::Unbounded => text.len(),
-    };
-    Lines {
-        text: text[line_start..line_end].iter(),
-        token_infos: token_infos[line_start..line_end].iter(),
-        inlays: inlays[line_start..line_end].iter(),
-        wraps: wraps[line_start..line_end].iter(),
-        folded,
-        folding,
-        unfolding,
-        heights: heights[line_start..line_end].iter(),
-        line_index: line_start,
     }
 }

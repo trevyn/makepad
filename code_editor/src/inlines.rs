@@ -1,40 +1,12 @@
 use {
-    crate::token::{Token, TokenInfo, Tokens},
+    crate::{inlays::InlineInlay, tokens::Token, Tokens},
     std::slice::Iter,
 };
-
-#[derive(Clone, Copy, Debug)]
-pub enum Inline<'a> {
-    Token { is_inlay: bool, token: Token<'a> },
-    Wrap,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Inlay {
-    pub text: String,
-    pub tokens: Vec<TokenInfo>,
-}
-
-impl Inlay {
-    pub fn new(text: impl Into<String>) -> Self {
-        use crate::token;
-
-        let text = text.into();
-        let tokens = token::tokenize(&text);
-        Self { text, tokens }
-    }
-
-    pub fn tokens(&self) -> Tokens<'_> {
-        use crate::token;
-
-        token::tokens(&self.text, &self.tokens)
-    }
-}
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
     tokens: Tokens<'a>,
-    inlays: Iter<'a, (usize, Inlay)>,
+    inlays: Iter<'a, (usize, InlineInlay)>,
     wraps: Iter<'a, usize>,
     token: Option<Token<'a>>,
     inlay_tokens: Option<Tokens<'a>>,
@@ -96,9 +68,15 @@ impl<'a> Iterator for Inlines<'a> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum Inline<'a> {
+    Token { is_inlay: bool, token: Token<'a> },
+    Wrap,
+}
+
 pub fn inlines<'a>(
     mut tokens: Tokens<'a>,
-    inlays: &'a [(usize, Inlay)],
+    inlays: &'a [(usize, InlineInlay)],
     wraps: &'a [usize],
 ) -> Inlines<'a> {
     let token = tokens.next();

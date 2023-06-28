@@ -1,7 +1,7 @@
 use crate::Line;
 
 pub fn wrap(line: Line<'_>, max_column_count: usize) -> Vec<usize> {
-    use crate::{inline::Inline, StrExt};
+    use crate::{inlines::Inline, str::StrExt};
 
     let mut wraps = Vec::new();
     let mut inlay_byte_index = 0;

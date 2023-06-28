@@ -1,5 +1,5 @@
 use {
-    crate::{position::PositionWithAffinity, state::SessionId, Block, Range, State, Vector},
+    crate::{blocks::Block, position::PositionWithAffinity, state::SessionId, Range, State},
     makepad_widgets::*,
     std::iter::Peekable,
 };
@@ -38,7 +38,7 @@ pub struct CodeEditor {
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        use crate::{layout::EventKind, position::Affinity, token::TokenKind, Position};
+        use crate::{layout::EventKind, position::Affinity, tokenize::TokenKind, Position};
 
         self.scroll_bars.begin(cx, self.walk, Layout::default());
 
@@ -118,7 +118,7 @@ impl CodeEditor {
         let view = state.view(session_id);
         let mut max_width = 0.0;
         let mut height = 0.0;
-        for block in view.blocks(..) {
+        for block in view.blocks(0..view.line_count()) {
             match block {
                 Block::Line { line, .. } => {
                     max_width = max_width.max(line.width()) * cell_size.x;

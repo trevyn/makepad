@@ -1,36 +1,38 @@
 pub mod arena;
-pub mod block;
-pub mod char_ext;
+pub mod blocks;
+pub mod char;
 pub mod code_editor;
 pub mod fold;
-pub mod inline;
+pub mod inlays;
+pub mod inlines;
 pub mod layout;
 pub mod length;
 pub mod line;
+pub mod lines;
 pub mod position;
 pub mod range;
 pub mod selection;
 pub mod state;
-pub mod str_ext;
-pub mod token;
+pub mod str;
+pub mod tokenize;
+pub mod tokens;
 pub mod vector;
 pub mod wrap;
 
 pub use self::{
     arena::Arena,
-    block::Block,
-    char_ext::CharExt,
+    blocks::Blocks,
     code_editor::CodeEditor,
     fold::Fold,
-    inline::Inline,
+    inlines::{inlines, Inlines},
     layout::{layout, Layout},
     length::Length,
     line::{line, Line},
+    lines::{lines, Lines},
     position::Position,
     range::Range,
     selection::Selection,
     state::State,
-    str_ext::StrExt,
-    token::Token,
+    tokens::{tokens, Tokens},
     vector::Vector,
 };

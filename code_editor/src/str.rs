@@ -7,7 +7,7 @@ pub trait StrExt {
 
 impl StrExt for str {
     fn column_count(&self) -> usize {
-        use crate::CharExt;
+        use crate::char::CharExt;
 
         self.chars().map(|char| char.column_count()).sum()
     }

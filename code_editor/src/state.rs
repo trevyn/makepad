@@ -1,13 +1,18 @@
 use {
     crate::{
-        arena::Id, block, block::Blocks, fold::Folding, inline, line::Lines, token::TokenInfo,
-        Arena, Block, Fold, Layout, Line, Selection,
+        arena::Id,
+        blocks,
+        blocks::Block,
+        fold::Folding,
+        inlays::{BlockInlay, InlineInlay},
+        tokenize::TokenInfo,
+        Arena, Blocks, Fold, Layout, Line, Lines, Selection,
     },
     std::{
         cell::RefCell,
         collections::{HashMap, HashSet},
         io,
-        ops::RangeBounds,
+        ops::Range,
         path::{Path, PathBuf},
     },
 };
@@ -36,10 +41,10 @@ impl State {
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
                         vec![
-                            (20, inline::Inlay::new("X Y Z")),
-                            (40, inline::Inlay::new("X Y Z")),
-                            (60, inline::Inlay::new("X Y Z")),
-                            (80, inline::Inlay::new("X Y Z")),
+                            (20, InlineInlay::new("X Y Z")),
+                            (40, InlineInlay::new("X Y Z")),
+                            (60, InlineInlay::new("X Y Z")),
+                            (80, InlineInlay::new("X Y Z")),
                         ]
                     })
                     .collect(),
@@ -62,7 +67,7 @@ impl State {
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
         for index in 0..19 {
-            view.insert_block_inlay(index * 10, block::Inlay::new("XXX YYY ZZZ"));
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
         for line_index in 0..view.line_count() {
             view.update_line_height(line_index);
@@ -123,7 +128,7 @@ impl State {
         &mut self,
         path: Option<impl AsRef<Path> + Into<PathBuf>>,
     ) -> io::Result<Id<Document>> {
-        use {crate::token, std::fs};
+        use {crate::tokenize, std::fs};
 
         let text = {
             let mut text: Vec<_> = String::from_utf8_lossy(
@@ -139,7 +144,7 @@ impl State {
             }
             text
         };
-        let token_infos = text.iter().map(|text| token::tokenize(text)).collect();
+        let token_infos = text.iter().map(|text| tokenize::tokenize(text)).collect();
         Ok(self.documents.insert(Document {
             session_ids: HashSet::new(),
             text,
@@ -160,14 +165,14 @@ pub struct View<'a> {
     max_column_count: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
-    inline_inlays: &'a [Vec<(usize, inline::Inlay)>],
+    inline_inlays: &'a [Vec<(usize, InlineInlay)>],
     wraps: &'a [Vec<usize>],
     folded: &'a HashSet<usize>,
     folding: &'a HashMap<usize, Folding>,
     unfolding: &'a HashMap<usize, Folding>,
     heights: &'a [f64],
     summed_heights: &'a RefCell<Vec<f64>>,
-    block_inlays: &'a [(usize, block::Inlay)],
+    block_inlays: &'a [(usize, BlockInlay)],
     selection: &'a Selection,
 }
 
@@ -220,10 +225,8 @@ impl<'a> View<'a> {
         self.summed_heights.borrow()[line_index]
     }
 
-    pub fn lines(&self, line_range: impl RangeBounds<usize>) -> Lines<'a> {
-        use crate::line;
-
-        line::lines(
+    pub fn lines(&self, line_range: Range<usize>) -> Lines<'a> {
+        crate::lines(
             self.text,
             self.token_infos,
             self.inline_inlays,
@@ -236,11 +239,11 @@ impl<'a> View<'a> {
         )
     }
 
-    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'a> {
-        block::blocks(self.lines(line_range), self.block_inlays)
+    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'a> {
+        blocks::blocks(self.lines(line_range), self.block_inlays)
     }
 
-    pub fn layout(&self, line_range: impl RangeBounds<usize>) -> Layout<'a> {
+    pub fn layout(&self, line_range: Range<usize>) -> Layout<'a> {
         crate::layout(self, line_range)
     }
 
@@ -250,14 +253,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start = summed_heights.len();
-        let mut summed_height = if start == 0 {
+        let line_start = summed_heights.len();
+        let mut summed_height = if line_start == 0 {
             0.0
         } else {
-            summed_heights[start - 1]
+            summed_heights[line_start - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start..) {
+        for block in self.blocks(line_start..self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.fold().scale();
@@ -275,14 +278,14 @@ pub struct ViewMut<'a> {
     max_column_count: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
-    inline_inlays: &'a mut [Vec<(usize, inline::Inlay)>],
+    inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
     breaks: &'a mut [Vec<usize>],
     folded: &'a mut HashSet<usize>,
     folding: &'a mut HashMap<usize, Folding>,
     unfolding: &'a mut HashMap<usize, Folding>,
     heights: &'a mut [f64],
     summed_heights: &'a mut RefCell<Vec<f64>>,
-    block_inlays: &'a mut Vec<(usize, block::Inlay)>,
+    block_inlays: &'a mut Vec<(usize, BlockInlay)>,
     selection: &'a mut Selection,
     tmp_folding: &'a mut HashMap<usize, Folding>,
 }
@@ -329,15 +332,15 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_summed_height(line_index)
     }
 
-    pub fn lines(&self, line_range: impl RangeBounds<usize>) -> Lines<'_> {
+    pub fn lines(&self, line_range: Range<usize>) -> Lines<'_> {
         self.as_view().lines(line_range)
     }
 
-    pub fn blocks(&self, line_range: impl RangeBounds<usize>) -> Blocks<'_> {
+    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'_> {
         self.as_view().blocks(line_range)
     }
 
-    pub fn layout(&self, line_range: impl RangeBounds<usize>) -> Layout<'_> {
+    pub fn layout(&self, line_range: Range<usize>) -> Layout<'_> {
         self.as_view().layout(line_range)
     }
 
@@ -430,7 +433,7 @@ impl<'a> ViewMut<'a> {
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: block::Inlay) {
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
         let index = match self
             .block_inlays
             .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
@@ -469,14 +472,14 @@ impl<'a> ViewMut<'a> {
 struct Session {
     max_column_count: Option<usize>,
     document_id: Id<Document>,
-    inline_inlays: Vec<Vec<(usize, inline::Inlay)>>,
+    inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
     folded: HashSet<usize>,
     folding: HashMap<usize, Folding>,
     unfolding: HashMap<usize, Folding>,
     heights: Vec<f64>,
     summed_heights: RefCell<Vec<f64>>,
-    block_inlays: Vec<(usize, block::Inlay)>,
+    block_inlays: Vec<(usize, BlockInlay)>,
     selection: Selection,
     tmp_folding: HashMap<usize, Folding>,
 }
