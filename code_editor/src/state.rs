@@ -6,7 +6,7 @@ use {
         fold::Folding,
         inlays::{BlockInlay, InlineInlay},
         tokenize::TokenInfo,
-        Arena, Blocks, Fold, Layout, Line, Lines, Selection,
+        Arena, Blocks, Fold, Line, Lines, Selection,
     },
     std::{
         cell::RefCell,
@@ -205,7 +205,13 @@ impl<'a> View<'a> {
             .binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap())
         {
             Ok(index) => index + 1,
-            Err(index) => index + 1,
+            Err(index) => {
+                if index == self.line_count() {
+                    index
+                } else {
+                    index + 1
+                }
+            }
         }
     }
 
@@ -243,10 +249,6 @@ impl<'a> View<'a> {
         blocks::blocks(self.lines(line_range), self.block_inlays)
     }
 
-    pub fn layout(&self, line_range: Range<usize>) -> Layout<'a> {
-        crate::layout(self, line_range)
-    }
-
     pub fn selection(&self) -> &'a Selection {
         &self.selection
     }
@@ -262,8 +264,8 @@ impl<'a> View<'a> {
         drop(summed_heights);
         for block in self.blocks(line_start..self.line_count()) {
             match block {
-                Block::Line { is_inlay, line } => {
-                    summed_height += line.fold().scale();
+                Block::Line(is_inlay, line) => {
+                    summed_height += line.fold().scale() * line.row_count() as f64;
                     if !is_inlay {
                         self.summed_heights.borrow_mut().push(summed_height);
                     }
@@ -338,10 +340,6 @@ impl<'a> ViewMut<'a> {
 
     pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'_> {
         self.as_view().blocks(line_range)
-    }
-
-    pub fn layout(&self, line_range: Range<usize>) -> Layout<'_> {
-        self.as_view().layout(line_range)
     }
 
     pub fn selection(&self) -> &Selection {

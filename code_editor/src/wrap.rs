@@ -8,7 +8,7 @@ pub fn wrap(line: Line<'_>, max_column_count: usize) -> Vec<usize> {
     let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
-            Inline::Token { token, .. } => {
+            Inline::Token(_, token) => {
                 let column_count: usize = token.text.column_count();
                 if column_index + column_count > max_column_count {
                     wraps.push(inlay_byte_index);

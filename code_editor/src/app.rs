@@ -67,7 +67,9 @@ impl Default for State {
         let mut code_editor = makepad_code_editor::State::new();
         let session_id = code_editor
             .open_session(Some(
-                env::current_dir().unwrap().join("code_editor/src/app.rs"),
+                env::current_dir()
+                    .unwrap()
+                    .join("code_editor/src/test3k.rs"),
             ))
             .unwrap();
         Self {

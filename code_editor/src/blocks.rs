@@ -22,23 +22,17 @@ impl<'a> Iterator for Blocks<'a> {
         if let Some((index, _)) = self.inlays.as_slice().first() {
             if *index == self.lines.line_index() {
                 let (_, inlay) = self.inlays.next().unwrap();
-                return Some(Block::Line {
-                    is_inlay: true,
-                    line: inlay.as_line(),
-                });
+                return Some(Block::Line(true, inlay.as_line()));
             }
         }
         let line = self.lines.next()?;
-        Some(Block::Line {
-            is_inlay: false,
-            line,
-        })
+        Some(Block::Line(false, line))
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Block<'a> {
-    Line { is_inlay: bool, line: Line<'a> },
+    Line(bool, Line<'a>),
 }
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: &'a [(usize, BlockInlay)]) -> Blocks<'a> {

@@ -22,7 +22,7 @@ impl<'a> Line<'a> {
         let mut column_count = 0;
         for inline in self.inlines() {
             match inline {
-                Inline::Token { token, .. } => {
+                Inline::Token(_, token) => {
                     column_count += token.text.column_count();
                     max_column_count = max_column_count.max(column_count);
                 }
@@ -37,7 +37,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold.width(0, self.column_count())
+        self.fold.x(self.column_count())
     }
 
     pub fn height(&self) -> f64 {

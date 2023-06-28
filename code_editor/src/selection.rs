@@ -30,14 +30,29 @@ impl Default for Selection {
                 anchor: PositionWithAffinity {
                     position: Position {
                         line_index: 6,
-                        byte_index: 10,
+                        byte_index: 20,
                     },
                     affinity: Affinity::Before,
                 },
                 cursor: PositionWithAffinity {
                     position: Position {
-                        line_index: 12,
+                        line_index: 11,
                         byte_index: 20,
+                    },
+                    affinity: Affinity::After,
+                },
+            }, Region {
+                anchor: PositionWithAffinity {
+                    position: Position {
+                        line_index: 11,
+                        byte_index: 40,
+                    },
+                    affinity: Affinity::Before,
+                },
+                cursor: PositionWithAffinity {
+                    position: Position {
+                        line_index: 17,
+                        byte_index: 10,
                     },
                     affinity: Affinity::After,
                 },

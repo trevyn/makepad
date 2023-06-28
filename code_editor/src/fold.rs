@@ -46,10 +46,6 @@ impl Fold {
             Self::Unfolded => column_index as f64,
         }
     }
-
-    pub fn width(self, column_index: usize, column_count: usize) -> f64 {
-        self.x(column_index + column_count) - self.x(column_index)
-    }
 }
 
 impl Default for Fold {

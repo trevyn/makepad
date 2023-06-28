@@ -33,10 +33,7 @@ impl<'a> Iterator for Inlines<'a> {
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
                 self.inlay_byte_index += token.text.len();
-                return Some(Inline::Token {
-                    is_inlay: true,
-                    token,
-                });
+                return Some(Inline::Token(true, token));
             }
             self.inlay_tokens = None;
         }
@@ -61,16 +58,13 @@ impl<'a> Iterator for Inlines<'a> {
         };
         self.byte_index += token.text.len();
         self.inlay_byte_index += token.text.len();
-        Some(Inline::Token {
-            is_inlay: false,
-            token,
-        })
+        Some(Inline::Token(false, token))
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Inline<'a> {
-    Token { is_inlay: bool, token: Token<'a> },
+    Token(bool, Token<'a>),
     Wrap,
 }
 
