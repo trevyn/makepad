@@ -1,15 +1,12 @@
 use {
     crate::{
         arena::Id,
-        blocks,
         blocks::Block,
         fold::Folding,
         inlays::{BlockInlay, InlineInlay},
-        gaps::Gap,
-        position::PositionWithAffinity,
         selection::Cursor,
         tokenize::TokenInfo,
-        Arena, Blocks, Fold, Line, Lines, Selection, Vector,
+        Arena, Blocks, Fold, Layout, Line, Lines, Selection,
     },
     std::{
         cell::RefCell,
@@ -249,14 +246,11 @@ impl<'a> View<'a> {
     }
 
     pub fn blocks(&self, line_index_range: Range<usize>) -> Blocks<'a> {
-        blocks::blocks(self.lines(line_index_range), self.block_inlays)
+        crate::blocks(self.lines(line_index_range), self.block_inlays)
     }
 
-    pub fn gaps<F>(&self, line_index_range: Range<usize>, f: F)
-    where
-        F: FnMut(Gap),
-    {
-        crate::gaps(self, line_index_range, f);
+    pub fn layout(&self, line_index_range: Range<usize>) -> Layout<'a> {
+        crate::layout(self, line_index_range)
     }
 
     pub fn selection(&self) -> &'a Selection {
@@ -275,7 +269,7 @@ impl<'a> View<'a> {
         for block in self.blocks(start_line_index..self.line_count()) {
             match block {
                 Block::Line(is_inlay, line) => {
-                    summed_height += line.fold().scale() * line.row_count() as f64;
+                    summed_height += line.row_count() as f64 * line.fold().scale();
                     if !is_inlay {
                         self.summed_heights.borrow_mut().push(summed_height);
                     }
@@ -350,6 +344,10 @@ impl<'a> ViewMut<'a> {
 
     pub fn blocks(&self, line_index_range: Range<usize>) -> Blocks<'_> {
         self.as_view().blocks(line_index_range)
+    }
+
+    pub fn layout(&self, line_index_range: Range<usize>) -> Layout<'_> {
+        self.as_view().layout(line_index_range)
     }
 
     pub fn selection(&self) -> &Selection {

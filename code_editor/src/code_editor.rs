@@ -1,10 +1,11 @@
 use {
     crate::{
-        position::{Affinity, Position, PositionWithAffinity},
+        layout,
+        position::{Affinity, PositionWithAffinity},
+        selection,
+        selection::Region,
         state::SessionId,
-        tokens::Token,
-        visit::Visitor,
-        Fold, Line, Range, State,
+        Fold, State, Position,
     },
     makepad_widgets::*,
     std::iter::Peekable,
@@ -105,7 +106,7 @@ pub struct CodeEditor {
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        use crate::{blocks::Block, selection::Region};
+        use crate::{blocks::Block, str::StrExt};
 
         let viewport_position = self.scroll_bars.get_scroll_pos();
         let viewport_size = cx.turtle().rect().size;
@@ -122,31 +123,48 @@ impl CodeEditor {
         let end_line_index = view.find_first_line_starting_after_y(
             (viewport_position.y + viewport_size.y) / cell_size.y,
         );
-        let y = if start_line_index == 0 {
+        let start_y = if start_line_index == 0 {
             0.0
         } else {
             view.line_summed_height(start_line_index - 1)
         };
 
-        let mut visitor = DrawTextVisitor {
-            cx,
-            draw_text: &mut self.draw_text,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            viewport_position,
-            cell_size,
-            is_inlay_line: false,
-            fold: Fold::default(),
-            y,
-            column_index: 0,
-        };
-        for block in view.blocks(start_line_index..end_line_index) {
-            visitor.visit_block(block);
-        }
-
-        struct ActiveRegion {
-            region: Region,
-            start_x: f64,
+        let mut y = start_y;
+        let mut column_index = 0;
+        for event in view.layout(start_line_index..end_line_index) {
+            match event {
+                layout::Event::LineStart { line, .. } => {
+                    self.draw_text.font_scale = line.fold().scale();
+                }
+                layout::Event::LineEnd { line, .. } | layout::Event::Wrap { line, .. } => {
+                    column_index = 0;
+                    y += line.fold().scale();
+                }
+                layout::Event::TokenStart {
+                    is_inlay_line,
+                    line,
+                    is_inlay_token,
+                    token,
+                    ..
+                } => {
+                    self.draw_text.color = if is_inlay_line || is_inlay_token {
+                        self.inlay_color
+                    } else {
+                        self.token_color
+                    };
+                    self.draw_text.draw_abs(
+                        cx,
+                        DVec2 {
+                            x: line.fold().x(column_index),
+                            y,
+                        } * cell_size
+                            - viewport_position,
+                        token.text,
+                    );
+                    column_index += token.text.column_count();
+                }
+                _ => {}
+            }
         }
 
         let mut active_region = None;
@@ -164,67 +182,24 @@ impl CodeEditor {
                 start_x: 0.0,
             });
         }
-        view.gaps(start_line_index..end_line_index, |gap| {
-            let physical_position = DVec2 {
-                x: gap.physical_position.x,
-                y: gap.physical_position.y,
-            } * cell_size
-                - viewport_position;
-            if regions
-                .peek()
-                .map_or(false, |region| region.start() == gap.logical_position)
-            {
-                let region = regions.next().unwrap();
-                if region.cursor.position == gap.logical_position {
-                    self.draw_cursor.draw_abs(cx, Rect {
-                        pos: physical_position,
-                        size: DVec2 {
-                            x: 2.0,
-                            y: gap.scale * cell_size.y,
-                        },
-                    })
-                }
-                active_region = Some(ActiveRegion {
-                    region,
-                    start_x: physical_position.x,
-                });
-                self.draw_selection.begin(cx);
-            }
-            if let Some(region) = active_region.as_mut() {
-                if region.region.end() == gap.logical_position || gap.is_at_end_of_row {
-                    self.draw_selection.draw_rect(cx, Rect {
-                        pos: DVec2 {
-                            x: region.start_x,
-                            y: physical_position.y,
-                        },
-                        size: DVec2 {
-                            x: physical_position.x - region.start_x,
-                            y: gap.scale * cell_size.y,
-                        }
-                    });
-                    region.start_x = 0.0;
-                }
-            }
-            if active_region
-                .as_ref()
-                .map_or(false, |region| region.region.end() == gap.logical_position)
-            {
-                self.draw_selection.end(cx);
-                let region = active_region.take().unwrap().region;
-                if region.anchor.position != region.cursor.position.position && region.cursor.position == gap.logical_position {
-                    self.draw_cursor.draw_abs(cx, Rect {
-                        pos: physical_position,
-                        size: DVec2 {
-                            x: 2.0,
-                            y: gap.scale * cell_size.y,
-                        },
-                    })
-                }
-            }
-        });
-        if active_region.is_some() {
-            self.draw_selection.end(cx);
-        }
+        DrawSelectionContext {
+            draw_selection: &mut self.draw_selection,
+            draw_cursor: &mut self.draw_cursor,
+            viewport_position,
+            cell_size,
+            active_region,
+            regions,
+            logical_position: PositionWithAffinity {
+                position: Position {
+                    line_index: start_line_index,
+                    byte_index: 0,
+                },
+                affinity: Affinity::Before,
+            },
+            y: 0.0,
+            column_index: 0,
+            fold: Fold::default(),
+        }.draw_selection(cx, view.layout(start_line_index..end_line_index));
 
         let mut max_width = 0.0;
         let mut height = 0.0;
@@ -298,62 +273,166 @@ impl CodeEditor {
     }
 }
 
-struct DrawTextVisitor<'a, 'b> {
-    cx: &'a mut Cx2d<'b>,
-    draw_text: &'a mut DrawText,
-    inlay_color: Vec4,
-    token_color: Vec4,
+struct DrawSelectionContext<'a> {
+    draw_selection: &'a mut DrawSelection,
+    draw_cursor: &'a mut DrawColor,
     viewport_position: DVec2,
     cell_size: DVec2,
-    is_inlay_line: bool,
-    fold: Fold,
+    active_region: Option<ActiveRegion>,
+    regions: Peekable<selection::Iter<'a>>,
+    logical_position: PositionWithAffinity,
     y: f64,
     column_index: usize,
+    fold: Fold,
 }
 
-impl<'a, 'b> DrawTextVisitor<'a, 'b> {
-    fn position(&self) -> DVec2 {
+impl<'a> DrawSelectionContext<'a> {
+    fn draw_selection(&mut self, cx: &mut Cx2d<'_>, layout: layout::Layout<'a>) {
+        use crate::str::StrExt;
+
+        for event in layout {
+            match event {
+                layout::Event::LineStart {
+                    is_inlay_line,
+                    line,
+                    ..
+                } => {
+                    self.fold = line.fold();
+                    if !is_inlay_line {
+                        self.handle_event(cx);
+                        self.logical_position.affinity = Affinity::After;
+                    }
+                }
+                layout::Event::LineEnd { is_inlay_line, .. } => {
+                    if !is_inlay_line {
+                        self.handle_event(cx);
+                        if self.active_region.is_some() {
+                            self.draw_selection_rect(cx);
+                        }
+                        self.logical_position.position.line_index += 1;
+                        self.logical_position.position.byte_index = 0;
+                        self.logical_position.affinity = Affinity::Before;
+                    }
+                    self.y += self.fold.scale();
+                    self.column_index = 0;
+                    self.fold = Fold::default();
+                }
+                layout::Event::Wrap {
+                    is_inlay_line,
+                    line,
+                    ..
+                } => {
+                    if !is_inlay_line && self.active_region.is_some() {
+                        self.draw_selection_rect(cx);
+                    }
+                    self.y += line.fold().scale();
+                    self.column_index = 0;
+                }
+                layout::Event::Grapheme {
+                    is_inlay_line,
+                    is_inlay_token,
+                    grapheme,
+                    ..
+                } => {
+                    if !is_inlay_line && !is_inlay_token {
+                        self.handle_event(cx);
+                        self.logical_position.position.byte_index += grapheme.len();
+                        self.logical_position.affinity = Affinity::Before;
+                    }
+                    self.column_index += grapheme.column_count();
+                    if !is_inlay_line && !is_inlay_token {
+                        self.handle_event(cx);
+                        self.logical_position.affinity = Affinity::After;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if self.active_region.is_some() {
+            self.draw_selection.end(cx);
+        }
+    }
+
+    fn physical_position(&self) -> DVec2 {
         DVec2 {
             x: self.fold.x(self.column_index),
             y: self.y,
         } * self.cell_size
             - self.viewport_position
     }
+
+    fn height(&self) -> f64 {
+        self.fold.scale() * self.cell_size.y
+    }
+
+    fn handle_event(&mut self, cx: &mut Cx2d<'_>) {
+        if self
+            .regions
+            .peek()
+            .map_or(false, |region| region.start() == self.logical_position)
+        {
+            let region = self.regions.next().unwrap();
+            if region.cursor.position == self.logical_position {
+                self.draw_cursor(cx);
+            }
+            self.active_region = Some(ActiveRegion {
+                region,
+                start_x: self.physical_position().x,
+            });
+            self.draw_selection.begin(cx);
+        }
+        if self
+            .active_region
+            .as_ref()
+            .map_or(false, |region| region.region.end() == self.logical_position)
+        {
+            self.draw_selection_rect(cx);
+            self.draw_selection.end(cx);
+            let region = self.active_region.take().unwrap().region;
+            if region.anchor.position != region.cursor.position.position
+                && region.cursor.position == self.logical_position
+            {
+                self.draw_cursor(cx);
+            }
+        }
+    }
+
+    fn draw_selection_rect(&mut self, cx: &mut Cx2d<'_>) {
+        let physical_position = self.physical_position();
+        let height = self.height();
+        let region = self.active_region.as_mut().unwrap();
+        self.draw_selection.draw_rect(
+            cx,
+            Rect {
+                pos: DVec2 {
+                    x: region.start_x,
+                    y: physical_position.y,
+                },
+                size: DVec2 {
+                    x: physical_position.x - region.start_x,
+                    y: height,
+                },
+            },
+        );
+        region.start_x = 0.0;
+    }
+
+    fn draw_cursor(&mut self, cx: &mut Cx2d<'_>) {
+        let physical_position = self.physical_position();
+        let height = self.height();
+        self.draw_cursor.draw_abs(
+            cx,
+            Rect {
+                pos: physical_position,
+                size: DVec2 { x: 2.0, y: height },
+            },
+        )
+    }
 }
 
-impl<'a, 'b> Visitor for DrawTextVisitor<'a, 'b> {
-    fn visit_line(&mut self, is_inlay: bool, line: Line<'_>) {
-        use crate::visit;
-
-        self.is_inlay_line = is_inlay;
-        self.fold = line.fold();
-        visit::walk_line(self, line);
-        self.column_index = 0;
-        self.y += self.fold.scale();
-        self.fold = Fold::default();
-        self.is_inlay_line = false;
-    }
-
-    fn visit_token(&mut self, is_inlay: bool, token: Token<'_>) {
-        use crate::{str::StrExt, tokenize::TokenKind};
-
-        if token.kind != TokenKind::Whitespace {
-            self.draw_text.font_scale = self.fold.scale();
-            self.draw_text.color = if self.is_inlay_line || is_inlay {
-                self.inlay_color
-            } else {
-                self.token_color
-            };
-            self.draw_text
-                .draw_abs(self.cx, self.position(), token.text);
-        }
-        self.column_index += token.text.column_count();
-    }
-
-    fn visit_wrap(&mut self) {
-        self.column_index = 0;
-        self.y += self.fold.scale();
-    }
+struct ActiveRegion {
+    region: Region,
+    start_x: f64,
 }
 
 #[derive(Live, LiveHook)]
