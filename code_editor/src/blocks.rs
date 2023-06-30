@@ -10,8 +10,8 @@ pub struct Blocks<'a> {
 }
 
 impl<'a> Blocks<'a> {
-    pub fn line_index(&self) -> usize {
-        self.lines.line_index()
+    pub fn line_idx(&self) -> usize {
+        self.lines.line_idx()
     }
 }
 
@@ -19,8 +19,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((index, _)) = self.inlays.as_slice().first() {
-            if *index == self.lines.line_index() {
+        if let Some((idx, _)) = self.inlays.as_slice().first() {
+            if *idx == self.lines.line_idx() {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line(true, inlay.as_line()));
             }
@@ -37,8 +37,8 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: &'a [(usize, BlockInlay)]) -> Blocks<'a> {
     let mut inlays = inlays.iter();
-    while let Some((index, _)) = inlays.as_slice().first() {
-        if *index >= lines.line_index() {
+    while let Some((idx, _)) = inlays.as_slice().first() {
+        if *idx >= lines.line_idx() {
             break;
         }
         inlays.next();

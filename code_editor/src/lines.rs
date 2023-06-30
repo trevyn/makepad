@@ -17,12 +17,12 @@ pub struct Lines<'a> {
     folding: &'a HashMap<usize, Folding>,
     unfolding: &'a HashMap<usize, Folding>,
     heights: Iter<'a, f64>,
-    line_index: usize,
+    line_idx: usize,
 }
 
 impl<'a> Lines<'a> {
-    pub fn line_index(&self) -> usize {
-        self.line_index
+    pub fn line_idx(&self) -> usize {
+        self.line_idx
     }
 }
 
@@ -35,15 +35,10 @@ impl<'a> Iterator for Lines<'a> {
             self.token_infos.next()?,
             self.inlays.next()?,
             self.wraps.next()?,
-            Fold::new(
-                &self.folded,
-                &self.folding,
-                &self.unfolding,
-                self.line_index,
-            ),
+            Fold::new(&self.folded, &self.folding, &self.unfolding, self.line_idx),
             *self.heights.next()?,
         );
-        self.line_index += 1;
+        self.line_idx += 1;
         Some(line)
     }
 }
@@ -68,6 +63,6 @@ pub fn lines<'a>(
         folding,
         unfolding,
         heights: heights[line_range.clone()].iter(),
-        line_index: line_range.start,
+        line_idx: line_range.start,
     }
 }

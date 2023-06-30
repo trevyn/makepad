@@ -1,44 +1,44 @@
 pub trait StrExt {
-    fn column_count(&self) -> usize;
-    fn is_grapheme_boundary(&self, index: usize) -> bool;
-    fn next_grapheme_boundary(&self, index: usize) -> Option<usize>;
-    fn prev_grapheme_boundary(&self, index: usize) -> Option<usize>;
+    fn col_count(&self) -> usize;
+    fn is_grapheme_boundary(&self, idx: usize) -> bool;
+    fn next_grapheme_boundary(&self, idx: usize) -> Option<usize>;
+    fn prev_grapheme_boundary(&self, idx: usize) -> Option<usize>;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn column_count(&self) -> usize {
+    fn col_count(&self) -> usize {
         use crate::char::CharExt;
 
-        self.chars().map(|char| char.column_count()).sum()
+        self.chars().map(|char| char.col_count()).sum()
     }
 
-    fn is_grapheme_boundary(&self, index: usize) -> bool {
-        self.is_char_boundary(index)
+    fn is_grapheme_boundary(&self, idx: usize) -> bool {
+        self.is_char_boundary(idx)
     }
 
-    fn next_grapheme_boundary(&self, index: usize) -> Option<usize> {
-        if index == self.len() {
+    fn next_grapheme_boundary(&self, idx: usize) -> Option<usize> {
+        if idx == self.len() {
             return None;
         }
-        let mut index = index + 1;
-        while !self.is_grapheme_boundary(index) {
-            index += 1;
+        let mut idx = idx + 1;
+        while !self.is_grapheme_boundary(idx) {
+            idx += 1;
         }
-        Some(index)
+        Some(idx)
     }
 
-    fn prev_grapheme_boundary(&self, index: usize) -> Option<usize> {
-        if index == 0 {
+    fn prev_grapheme_boundary(&self, idx: usize) -> Option<usize> {
+        if idx == 0 {
             return None;
         }
-        let mut index = index - 1;
-        while !self.is_grapheme_boundary(index) {
-            index -= 1;
+        let mut idx = idx - 1;
+        while !self.is_grapheme_boundary(idx) {
+            idx -= 1;
         }
-        Some(index)
+        Some(idx)
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -101,10 +101,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let index = self
+        let idx = self
             .string
             .grapheme_indices()
-            .find_map(|(index, next_grapheme)| {
+            .find_map(|(idx, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -113,13 +113,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(index)
+                    Some(idx)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(index);
+        let (string, remaining_string) = self.string.split_at(idx);
         self.string = remaining_string;
         Some(string)
     }

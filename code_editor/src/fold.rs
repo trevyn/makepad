@@ -13,15 +13,15 @@ impl Fold {
         folded: &HashSet<usize>,
         folding: &HashMap<usize, Folding>,
         unfolding: &HashMap<usize, Folding>,
-        line_index: usize,
+        line_idx: usize,
     ) -> Self {
-        if folded.contains(&line_index) {
+        if folded.contains(&line_idx) {
             return Self::Folded;
         }
-        if let Some(&folding) = folding.get(&line_index) {
+        if let Some(&folding) = folding.get(&line_idx) {
             return Self::Folding(folding);
         }
-        if let Some(&folding) = unfolding.get(&line_index) {
+        if let Some(&folding) = unfolding.get(&line_idx) {
             return Self::Unfolding(folding);
         }
         Fold::default()
@@ -35,15 +35,15 @@ impl Fold {
         }
     }
 
-    pub fn x(self, column_index: usize) -> f64 {
+    pub fn x(self, col_idx: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
             Self::Folding(folding) | Self::Unfolding(folding) => {
-                let column_count_before = column_index.min(folding.column_index);
-                let column_count_after = column_index - column_count_before;
-                column_count_before as f64 + folding.scale * column_count_after as f64
+                let col_count_before = col_idx.min(folding.col_idx);
+                let col_count_after = col_idx - col_count_before;
+                col_count_before as f64 + folding.scale * col_count_after as f64
             }
-            Self::Unfolded => column_index as f64,
+            Self::Unfolded => col_idx as f64,
         }
     }
 }
@@ -56,6 +56,6 @@ impl Default for Fold {
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Folding {
-    pub column_index: usize,
+    pub col_idx: usize,
     pub scale: f64,
 }

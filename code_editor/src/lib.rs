@@ -3,15 +3,13 @@ pub mod blocks;
 pub mod char;
 pub mod code_editor;
 pub mod fold;
-pub mod gaps;
 pub mod inlays;
 pub mod inlines;
 pub mod layout;
-pub mod length;
+pub mod len;
 pub mod line;
 pub mod lines;
-pub mod position;
-pub mod range;
+pub mod pos;
 pub mod selection;
 pub mod state;
 pub mod str;
@@ -27,11 +25,10 @@ pub use self::{
     fold::Fold,
     inlines::{inlines, Inlines},
     layout::{layout, Layout},
-    length::Length,
+    len::Len,
     line::{line, Line},
     lines::{lines, Lines},
-    position::Position,
-    range::Range,
+    pos::Pos,
     selection::Selection,
     state::State,
     tokens::{tokens, Tokens},

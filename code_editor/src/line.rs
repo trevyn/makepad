@@ -15,21 +15,21 @@ impl<'a> Line<'a> {
         self.fold
     }
 
-    pub fn column_count(&self) -> usize {
+    pub fn col_count(&self) -> usize {
         use crate::{inlines::Inline, str::StrExt};
 
-        let mut max_column_count = 0;
-        let mut column_count = 0;
+        let mut max_col_count = 0;
+        let mut col_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token(_, token) => {
-                    column_count += token.text.column_count();
-                    max_column_count = max_column_count.max(column_count);
+                    col_count += token.text.col_count();
+                    max_col_count = max_col_count.max(col_count);
                 }
-                Inline::Wrap => column_count = 0,
+                Inline::Wrap => col_count = 0,
             }
         }
-        max_column_count
+        max_col_count
     }
 
     pub fn row_count(&self) -> usize {
@@ -37,7 +37,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold.x(self.column_count())
+        self.fold.x(self.col_count())
     }
 
     pub fn height(&self) -> f64 {

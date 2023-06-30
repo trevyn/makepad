@@ -184,10 +184,10 @@ pub enum Event<'a> {
     },
 }
 
-pub fn layout<'a>(view: &View<'a>, line_index_range: Range<usize>) -> Layout<'a> {
+pub fn layout<'a>(view: &View<'a>, line_idx_range: Range<usize>) -> Layout<'a> {
     Layout {
         state: Some(State::Blocks {
-            blocks: view.blocks(line_index_range),
+            blocks: view.blocks(line_idx_range),
         }),
     }
 }
