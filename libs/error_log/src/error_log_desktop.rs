@@ -47,8 +47,8 @@ pub fn log_impl(file:&str, line:u32, column_start:u32, column_end:u32, message:&
             let _ = write!(out, "\"file_name\":\"{}\",", file);
             let _ = write!(out, "\"byte_start\":0,");
             let _ = write!(out, "\"byte_end\":0,");
-            let _ = write!(out, "\"line_start\":{},", line);
-            let _ = write!(out, "\"line_end\":{},", line);
+            let _ = write!(out, "\"start_line_index\":{},", line);
+            let _ = write!(out, "\"end_line_index\":{},", line);
             let _ = write!(out, "\"column_start\":{},", column_start);
             let _ = write!(out, "\"column_end\":{},", column_end);
             let _ = write!(out, "\"is_primary\":true,");

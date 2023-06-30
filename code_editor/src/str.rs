@@ -1,5 +1,8 @@
 pub trait StrExt {
     fn column_count(&self) -> usize;
+    fn is_grapheme_boundary(&self, index: usize) -> bool;
+    fn next_grapheme_boundary(&self, index: usize) -> Option<usize>;
+    fn prev_grapheme_boundary(&self, index: usize) -> Option<usize>;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
@@ -10,6 +13,32 @@ impl StrExt for str {
         use crate::char::CharExt;
 
         self.chars().map(|char| char.column_count()).sum()
+    }
+
+    fn is_grapheme_boundary(&self, index: usize) -> bool {
+        self.is_char_boundary(index)
+    }
+
+    fn next_grapheme_boundary(&self, index: usize) -> Option<usize> {
+        if index == self.len() {
+            return None;
+        }
+        let mut index = index + 1;
+        while !self.is_grapheme_boundary(index) {
+            index += 1;
+        }
+        Some(index)
+    }
+
+    fn prev_grapheme_boundary(&self, index: usize) -> Option<usize> {
+        if index == 0 {
+            return None;
+        }
+        let mut index = index - 1;
+        while !self.is_grapheme_boundary(index) {
+            index -= 1;
+        }
+        Some(index)
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -37,14 +66,8 @@ impl<'a> Iterator for Graphemes<'a> {
     type Item = &'a str;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.string.is_empty() {
-            return None;
-        }
-        let mut index = 1;
-        while !self.string.is_char_boundary(index) {
-            index += 1;
-        }
-        let (grapheme, remaining_string) = self.string.split_at(index);
+        let (grapheme, remaining_string) =
+            self.string.split_at(self.string.next_grapheme_boundary(0)?);
         self.string = remaining_string;
         Some(grapheme)
     }

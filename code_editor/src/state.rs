@@ -5,8 +5,11 @@ use {
         blocks::Block,
         fold::Folding,
         inlays::{BlockInlay, InlineInlay},
+        gaps::Gap,
+        position::PositionWithAffinity,
+        selection::Cursor,
         tokenize::TokenInfo,
-        Arena, Blocks, Fold, Line, Lines, Selection,
+        Arena, Blocks, Fold, Line, Lines, Selection, Vector,
     },
     std::{
         cell::RefCell,
@@ -231,7 +234,7 @@ impl<'a> View<'a> {
         self.summed_heights.borrow()[line_index]
     }
 
-    pub fn lines(&self, line_range: Range<usize>) -> Lines<'a> {
+    pub fn lines(&self, line_index_range: Range<usize>) -> Lines<'a> {
         crate::lines(
             self.text,
             self.token_infos,
@@ -241,12 +244,19 @@ impl<'a> View<'a> {
             &self.folding,
             &self.unfolding,
             self.heights,
-            line_range,
+            line_index_range,
         )
     }
 
-    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'a> {
-        blocks::blocks(self.lines(line_range), self.block_inlays)
+    pub fn blocks(&self, line_index_range: Range<usize>) -> Blocks<'a> {
+        blocks::blocks(self.lines(line_index_range), self.block_inlays)
+    }
+
+    pub fn gaps<F>(&self, line_index_range: Range<usize>, f: F)
+    where
+        F: FnMut(Gap),
+    {
+        crate::gaps(self, line_index_range, f);
     }
 
     pub fn selection(&self) -> &'a Selection {
@@ -255,14 +265,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start..self.line_count()) {
+        for block in self.blocks(start_line_index..self.line_count()) {
             match block {
                 Block::Line(is_inlay, line) => {
                     summed_height += line.fold().scale() * line.row_count() as f64;
@@ -334,12 +344,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_summed_height(line_index)
     }
 
-    pub fn lines(&self, line_range: Range<usize>) -> Lines<'_> {
-        self.as_view().lines(line_range)
+    pub fn lines(&self, line_index_range: Range<usize>) -> Lines<'_> {
+        self.as_view().lines(line_index_range)
     }
 
-    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'_> {
-        self.as_view().blocks(line_range)
+    pub fn blocks(&self, line_index_range: Range<usize>) -> Blocks<'_> {
+        self.as_view().blocks(line_index_range)
     }
 
     pub fn selection(&self) -> &Selection {
@@ -458,11 +468,29 @@ impl<'a> ViewMut<'a> {
     fn update_line_height(&mut self, line_index: usize) {
         let old_height = self.heights[line_index];
         let line = self.line(line_index);
-        let new_height = line.row_count() as f64 * line.fold().scale();
+        let new_height = line.fold().scale() * line.row_count() as f64;
         self.heights[line_index] = new_height;
         if old_height != new_height {
             self.summed_heights.borrow_mut().truncate(line_index);
         }
+    }
+
+    fn modify_selection(&mut self, select: bool, mut f: impl FnMut(Cursor) -> Cursor) {
+        use {crate::selection::Region, std::mem};
+
+        let mut selection = mem::take(self.selection);
+        selection.modify_all_regions(|region| {
+            let cursor = f(region.cursor);
+            Region {
+                anchor: if select {
+                    region.anchor
+                } else {
+                    cursor.position
+                },
+                cursor,
+            }
+        });
+        *self.selection = selection;
     }
 }
 

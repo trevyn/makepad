@@ -436,8 +436,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -445,12 +445,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -1229,26 +1229,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -1256,14 +1256,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -1330,12 +1330,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -2101,8 +2101,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -2110,12 +2110,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -2894,26 +2894,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -2921,14 +2921,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -2995,12 +2995,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -3766,8 +3766,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -3775,12 +3775,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -4559,26 +4559,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -4586,14 +4586,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -4660,12 +4660,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -5431,8 +5431,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -5440,12 +5440,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -6224,26 +6224,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -6251,14 +6251,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -6325,12 +6325,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -7096,8 +7096,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -7105,12 +7105,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -7889,26 +7889,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -7916,14 +7916,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -7990,12 +7990,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -8761,8 +8761,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -8770,12 +8770,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -9554,26 +9554,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -9581,14 +9581,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -9655,12 +9655,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -10426,8 +10426,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -10435,12 +10435,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -11219,26 +11219,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -11246,14 +11246,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -11320,12 +11320,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -12091,8 +12091,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -12100,12 +12100,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -12884,26 +12884,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -12911,14 +12911,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -12985,12 +12985,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -13756,8 +13756,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -13765,12 +13765,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -14549,26 +14549,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -14576,14 +14576,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -14650,12 +14650,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -15421,8 +15421,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -15430,12 +15430,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -16214,26 +16214,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -16241,14 +16241,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -16315,12 +16315,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -17086,8 +17086,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -17095,12 +17095,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -17879,26 +17879,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -17906,14 +17906,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -17980,12 +17980,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -18751,8 +18751,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -18760,12 +18760,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -19544,26 +19544,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -19571,14 +19571,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -19645,12 +19645,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -20416,8 +20416,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -20425,12 +20425,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -21209,26 +21209,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -21236,14 +21236,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -21310,12 +21310,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -22081,8 +22081,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -22090,12 +22090,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -22874,26 +22874,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -22901,14 +22901,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -22975,12 +22975,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -23746,8 +23746,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -23755,12 +23755,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -24539,26 +24539,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -24566,14 +24566,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -24640,12 +24640,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
@@ -25411,8 +25411,8 @@ impl CodeEditor {
         let scroll_position = self.scroll_bars.get_scroll_pos();
 
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(scroll_position.y / row_height);
-        let line_end = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
@@ -25420,12 +25420,12 @@ impl CodeEditor {
             inlay_color: self.inlay_color,
             token_color: self.token_color,
             scroll_position,
-            row_y: view.line_y(line_start) * row_height,
+            row_y: view.line_y(start_line_index) * row_height,
             column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(line_start, line_end) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -26204,26 +26204,26 @@ impl<'a> View<'a> {
         }
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[line_start..line_end].iter(),
-            self.token_infos[line_start..line_end].iter(),
-            self.inline_inlays[line_start..line_end].iter(),
-            self.breaks[line_start..line_end].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[line_start..line_end].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(line_start, line_end),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .position(|(line_index, _)| *line_index >= line_start)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -26231,14 +26231,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let line_start = summed_heights.len();
-        let mut summed_height = if line_start == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[line_start - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(line_start, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -26305,12 +26305,12 @@ impl<'a> ViewMut<'a> {
         self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, line_start: usize, line_end: usize) -> Lines<'_> {
-        self.as_view().lines(line_start, line_end)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, line_start: usize, line_end: usize) -> Blocks<'_> {
-        self.as_view().blocks(line_start, line_end)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
     pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {

@@ -76,6 +76,10 @@ live_design! {
         draw_selection: {
             draw_depth: 1.0,
         }
+        draw_cursor: {
+            draw_depth: 2.0,
+            color: #FFF,
+        }
         inlay_color: #C00000
         token_color: #C0C0C0
     }
@@ -92,6 +96,8 @@ pub struct CodeEditor {
     #[live]
     draw_selection: DrawSelection,
     #[live]
+    draw_cursor: DrawColor,
+    #[live]
     inlay_color: Vec4,
     #[live]
     token_color: Vec4,
@@ -99,7 +105,7 @@ pub struct CodeEditor {
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
-        use crate::blocks::Block;
+        use crate::{blocks::Block, selection::Region};
 
         let viewport_position = self.scroll_bars.get_scroll_pos();
         let viewport_size = cx.turtle().rect().size;
@@ -111,14 +117,15 @@ impl CodeEditor {
 
         self.scroll_bars.begin(cx, self.walk, Layout::default());
         let view = state.view(session_id);
-        let line_start = view.find_first_line_ending_after_y(viewport_position.y / cell_size.y);
-        let line_end = view.find_first_line_starting_after_y(
+        let start_line_index =
+            view.find_first_line_ending_after_y(viewport_position.y / cell_size.y);
+        let end_line_index = view.find_first_line_starting_after_y(
             (viewport_position.y + viewport_size.y) / cell_size.y,
         );
-        let y = if line_start == 0 {
+        let y = if start_line_index == 0 {
             0.0
         } else {
-            view.line_summed_height(line_start - 1)
+            view.line_summed_height(start_line_index - 1)
         };
 
         let mut visitor = DrawTextVisitor {
@@ -133,21 +140,90 @@ impl CodeEditor {
             y,
             column_index: 0,
         };
-        for block in view.blocks(line_start..line_end) {
+        for block in view.blocks(start_line_index..end_line_index) {
             visitor.visit_block(block);
         }
 
-        let mut visitor = DrawOverlayVisitor::new(
-            cx,
-            &mut self.draw_selection,
-            viewport_position,
-            cell_size,
-            view.selection().iter().map(|region| region.range()),
-            line_start,
-            y
-        );
-        for block in view.blocks(line_start..line_end) {
-            visitor.visit_block(block);
+        struct ActiveRegion {
+            region: Region,
+            start_x: f64,
+        }
+
+        let mut active_region = None;
+        let mut regions = view.selection().iter().peekable();
+        while regions.peek().map_or(false, |region| {
+            region.end().position.line_index < start_line_index
+        }) {
+            regions.next();
+        }
+        if regions.peek().map_or(false, |region| {
+            region.start().position.line_index < start_line_index
+        }) {
+            active_region = Some(ActiveRegion {
+                region: regions.next().unwrap(),
+                start_x: 0.0,
+            });
+        }
+        view.gaps(start_line_index..end_line_index, |gap| {
+            let physical_position = DVec2 {
+                x: gap.physical_position.x,
+                y: gap.physical_position.y,
+            } * cell_size
+                - viewport_position;
+            if regions
+                .peek()
+                .map_or(false, |region| region.start() == gap.logical_position)
+            {
+                let region = regions.next().unwrap();
+                if region.cursor.position == gap.logical_position {
+                    self.draw_cursor.draw_abs(cx, Rect {
+                        pos: physical_position,
+                        size: DVec2 {
+                            x: 2.0,
+                            y: gap.scale * cell_size.y,
+                        },
+                    })
+                }
+                active_region = Some(ActiveRegion {
+                    region,
+                    start_x: physical_position.x,
+                });
+                self.draw_selection.begin(cx);
+            }
+            if let Some(region) = active_region.as_mut() {
+                if region.region.end() == gap.logical_position || gap.is_at_end_of_row {
+                    self.draw_selection.draw_rect(cx, Rect {
+                        pos: DVec2 {
+                            x: region.start_x,
+                            y: physical_position.y,
+                        },
+                        size: DVec2 {
+                            x: physical_position.x - region.start_x,
+                            y: gap.scale * cell_size.y,
+                        }
+                    });
+                    region.start_x = 0.0;
+                }
+            }
+            if active_region
+                .as_ref()
+                .map_or(false, |region| region.region.end() == gap.logical_position)
+            {
+                self.draw_selection.end(cx);
+                let region = active_region.take().unwrap().region;
+                if region.anchor.position != region.cursor.position.position && region.cursor.position == gap.logical_position {
+                    self.draw_cursor.draw_abs(cx, Rect {
+                        pos: physical_position,
+                        size: DVec2 {
+                            x: 2.0,
+                            y: gap.scale * cell_size.y,
+                        },
+                    })
+                }
+            }
+        });
+        if active_region.is_some() {
+            self.draw_selection.end(cx);
         }
 
         let mut max_width = 0.0;
@@ -179,12 +255,12 @@ impl CodeEditor {
         self.scroll_bars.handle_event_with(cx, event, &mut |cx, _| {
             cx.redraw_all();
         });
-        match event {
+        let mut view = state.view_mut(session_id);
+        match *event {
             Event::KeyDown(KeyEvent {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                let mut view = state.view_mut(session_id);
                 for line_index in 0..view.line_count() {
                     if view
                         .line(line_index)
@@ -203,7 +279,6 @@ impl CodeEditor {
                 key_code: KeyCode::Alt,
                 ..
             }) => {
-                let mut view = state.view_mut(session_id);
                 for line_index in 0..view.line_count() {
                     if view
                         .line(line_index)
@@ -281,198 +356,6 @@ impl<'a, 'b> Visitor for DrawTextVisitor<'a, 'b> {
     }
 }
 
-struct DrawOverlayVisitor<'a, 'b, I, D>
-where
-    I: Iterator<Item = Range<PositionWithAffinity>>,
-    D: DrawOverlay,
-{
-    cx: &'a mut Cx2d<'b>,
-    draw_overlay: &'a mut D,
-    viewport_position: DVec2,
-    cell_size: DVec2,
-    active_range: Option<ActiveRange>,
-    ranges: Peekable<I>,
-    logical_position: PositionWithAffinity,
-    fold: Fold,
-    y: f64,
-    column_index: usize,
-}
-
-impl<'a, 'b, I, D> DrawOverlayVisitor<'a, 'b, I, D>
-where
-    I: Iterator<Item = Range<PositionWithAffinity>>,
-    D: DrawOverlay,
-{
-    fn new(
-        cx: &'a mut Cx2d<'b>,
-        draw_overlay: &'a mut D,
-        viewport_position: DVec2,
-        cell_size: DVec2,
-        ranges: I,
-        line_start: usize,
-        y: f64,
-    ) -> Self {
-        let mut active_range = None;
-        let mut ranges = ranges.peekable();
-        while ranges
-            .peek()
-            .map_or(false, |range| range.end.position.line_index < line_start)
-        {
-            ranges.next();
-        }
-        if ranges
-            .peek()
-            .map_or(false, |range| range.start.position.line_index < line_start)
-        {
-            active_range = Some(ActiveRange {
-                range: ranges.next().unwrap(),
-                start_x: 0.0,
-            });
-        }
-        Self {
-            cx,
-            draw_overlay,
-            viewport_position,
-            cell_size,
-            active_range,
-            ranges,
-            logical_position: PositionWithAffinity {
-                position: Position {
-                    line_index: line_start,
-                    byte_index: 0,
-                },
-                affinity: Affinity::Before,
-            },
-            fold: Fold::default(),
-            y,
-            column_index: 0,
-        }
-    }
-
-    fn physical_position(&self) -> DVec2 {
-        DVec2 {
-            x: self.fold.x(self.column_index),
-            y: self.y,
-        } * self.cell_size
-            - self.viewport_position
-    }
-
-    fn handle_event(&mut self) {
-        if self
-            .ranges
-            .peek()
-            .map_or(false, |range| range.start == self.logical_position)
-        {
-            self.draw_overlay.begin(self.cx);
-            self.active_range = Some(ActiveRange {
-                range: self.ranges.next().unwrap(),
-                start_x: self.physical_position().x,
-            });
-        }
-        if self
-            .active_range
-            .as_ref()
-            .map_or(false, |range| range.range.end == self.logical_position)
-        {
-            self.draw_rect();
-            self.draw_overlay.end(self.cx);
-            self.active_range.take().unwrap();
-        }
-    }
-
-    fn draw_rect(&mut self) {
-        use std::mem;
-
-        let start_x = mem::replace(&mut self.active_range.as_mut().unwrap().start_x, 0.0);
-        let DVec2 { x: end_x, y } = self.physical_position();
-        self.draw_overlay.draw_rect(
-            self.cx,
-            Rect {
-                pos: DVec2 { x: start_x, y },
-                size: DVec2 {
-                    x: end_x - start_x,
-                    y: self.fold.scale() * self.cell_size.y,
-                },
-            },
-        );
-    }
-}
-
-impl<'a, 'b, I, D> Visitor for DrawOverlayVisitor<'a, 'b, I, D>
-where
-    I: Iterator<Item = Range<PositionWithAffinity>>,
-    D: DrawOverlay,
-{
-    fn visit_line(&mut self, is_inlay: bool, line: Line<'_>) {
-        use crate::visit;
-
-        if is_inlay {
-            self.column_index += 1;
-            if self.active_range.is_some() {
-                self.draw_rect();
-            }
-            self.column_index = 0;
-            self.y += line.fold().scale();
-        } else {
-            self.fold = line.fold();
-            self.handle_event();
-            visit::walk_line(self, line);
-            self.handle_event();
-            self.column_index += 1;
-            if self.active_range.is_some() {
-                self.draw_rect();
-            }
-            self.logical_position.position.line_index += 1;
-            self.logical_position.position.byte_index = 0;
-            self.logical_position.affinity = Affinity::Before;
-            self.column_index = 0;
-            self.y += self.fold.scale();
-            self.fold = Fold::default();
-        }
-    }
-
-    fn visit_token(&mut self, is_inlay: bool, token: Token<'_>) {
-        use crate::{str::StrExt, visit};
-
-        if is_inlay {
-            self.column_index += token.text.column_count();
-        } else {
-            visit::walk_token(self, token);
-        }
-    }
-
-    fn visit_grapheme(&mut self, grapheme: &str) {
-        use crate::str::StrExt;
-
-        self.handle_event();
-        self.logical_position.position.byte_index += grapheme.len();
-        self.logical_position.affinity = Affinity::Before;
-        self.column_index += grapheme.column_count();
-        self.handle_event();
-        self.logical_position.affinity = Affinity::After;
-    }
-
-    fn visit_wrap(&mut self) {
-        self.column_index += 1;
-        if self.active_range.is_some() {
-            self.draw_rect();
-        }
-        self.column_index = 0;
-        self.y += self.fold.scale();
-    }
-}
-
-struct ActiveRange {
-    range: Range<PositionWithAffinity>,
-    start_x: f64,
-}
-
-trait DrawOverlay {
-    fn begin(&mut self, cx: &mut Cx2d<'_>);
-    fn end(&mut self, cx: &mut Cx2d<'_>);
-    fn draw_rect(&mut self, cx: &mut Cx2d<'_>, rect: Rect);
-}
-
 #[derive(Live, LiveHook)]
 #[repr(C)]
 struct DrawSelection {
@@ -493,6 +376,22 @@ struct DrawSelection {
 }
 
 impl DrawSelection {
+    fn begin(&mut self, _cx: &mut Cx2d<'_>) {
+        debug_assert!(self.prev_rect.is_none());
+    }
+
+    fn end(&mut self, cx: &mut Cx2d<'_>) {
+        self.draw_rect_internal(cx, None);
+        self.prev_prev_rect = None;
+        self.prev_rect = None;
+    }
+
+    fn draw_rect(&mut self, cx: &mut Cx2d<'_>, rect: Rect) {
+        self.draw_rect_internal(cx, Some(rect));
+        self.prev_prev_rect = self.prev_rect;
+        self.prev_rect = Some(rect);
+    }
+
     fn draw_rect_internal(&mut self, cx: &mut Cx2d, rect: Option<Rect>) {
         if let Some(prev_rect) = self.prev_rect {
             if let Some(prev_prev_rect) = self.prev_prev_rect {
@@ -511,23 +410,5 @@ impl DrawSelection {
             }
             self.draw_abs(cx, prev_rect);
         }
-    }
-}
-
-impl DrawOverlay for DrawSelection {
-    fn begin(&mut self, _cx: &mut Cx2d<'_>) {
-        debug_assert!(self.prev_rect.is_none());
-    }
-
-    fn end(&mut self, cx: &mut Cx2d<'_>) {
-        self.draw_rect_internal(cx, None);
-        self.prev_prev_rect = None;
-        self.prev_rect = None;
-    }
-
-    fn draw_rect(&mut self, cx: &mut Cx2d<'_>, rect: Rect) {
-        self.draw_rect_internal(cx, Some(rect));
-        self.prev_prev_rect = self.prev_rect;
-        self.prev_rect = Some(rect);
     }
 }

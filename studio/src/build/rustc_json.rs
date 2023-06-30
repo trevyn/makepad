@@ -29,8 +29,8 @@ pub struct RustcSpan {
     pub file_name: String,
     pub byte_start: usize,
     pub byte_end: usize,
-    pub line_start: usize,
-    pub line_end: usize,
+    pub start_line_index: usize,
+    pub end_line_index: usize,
     pub column_start: usize,
     pub column_end: usize,
     pub is_primary: bool,
@@ -46,11 +46,11 @@ impl RustcSpan{
     pub fn to_range(&self)->Range{
         Range{
             start:Position{
-                line:self.line_start - 1,
+                line:self.start_line_index - 1,
                 column: self.column_start - 1
             },
             end:Position{
-                line:self.line_end - 1,
+                line:self.end_line_index - 1,
                 column:self.column_end - 1
             }
         }
