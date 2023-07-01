@@ -495,7 +495,7 @@ impl<'a> ViewMut<'a> {
                 anchor: if select {
                     region.anchor
                 } else {
-                    cursor.position
+                    cursor.biased_position
                 },
                 cursor,
             }

@@ -1,6 +1,6 @@
 use {
     crate::{
-        position::{Bias, BiasedPosition},
+        position::{Affinity, PositionWithAffinity},
         Position,
     },
     std::slice,
@@ -94,39 +94,39 @@ impl Default for Selection {
     fn default() -> Self {
         Self {
             latest_region: Region {
-                anchor: BiasedPosition {
+                anchor: PositionWithAffinity {
                     position: Position {
                         line_index: 6,
                         byte_index: 20,
                     },
-                    bias: Bias::Before,
+                    affinity: Affinity::Before,
                 },
                 cursor: Cursor {
-                    position: BiasedPosition {
+                    position: PositionWithAffinity {
                         position: Position {
                             line_index: 11,
                             byte_index: 20,
                         },
-                        bias: Bias::After,
+                        affinity: Affinity::After,
                     },
                     column_index: None,
                 },
             },
             earlier_regions: vec![Region {
-                anchor: BiasedPosition {
+                anchor: PositionWithAffinity {
                     position: Position {
                         line_index: 11,
                         byte_index: 40,
                     },
-                    bias: Bias::Before,
+                    affinity: Affinity::Before,
                 },
                 cursor: Cursor {
-                    position: BiasedPosition {
+                    position: PositionWithAffinity {
                         position: Position {
                             line_index: 17,
                             byte_index: 10,
                         },
-                        bias: Bias::After,
+                        affinity: Affinity::After,
                     },
                     column_index: None,
                 },
@@ -172,7 +172,7 @@ impl<'a> Iterator for Iter<'a> {
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Region {
-    pub anchor: BiasedPosition,
+    pub anchor: PositionWithAffinity,
     pub cursor: Cursor,
 }
 
@@ -181,11 +181,11 @@ impl Region {
         self.anchor == self.cursor.position
     }
 
-    pub fn start(self) -> BiasedPosition {
+    pub fn start(self) -> PositionWithAffinity {
         self.anchor.min(self.cursor.position)
     }
 
-    pub fn end(self) -> BiasedPosition {
+    pub fn end(self) -> PositionWithAffinity {
         self.anchor.max(self.cursor.position)
     }
 
@@ -208,7 +208,7 @@ impl Region {
             (true, false) if first.cursor.position.position == second.start().position => {
                 Some(second)
             }
-            (false, false) if first.end().position > second.start().position => Some(
+            (false, false) if first.end() > second.start() => Some(
                 match self.anchor.position.cmp(&self.cursor.position.position) {
                     Ordering::Less => Self {
                         anchor: self.anchor.min(other.anchor),
@@ -232,6 +232,6 @@ impl Region {
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Cursor {
-    pub position: BiasedPosition,
+    pub position: PositionWithAffinity,
     pub column_index: Option<usize>,
 }

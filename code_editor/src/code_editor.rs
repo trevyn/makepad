@@ -2,7 +2,7 @@ use {
     crate::{
         blocks::Block,
         inlines::Inline,
-        position::{Bias, BiasedPosition},
+        position::{Affinity, PositionWithAffinity},
         selection::{Iter, Region},
         state::{SessionId, View, ViewMut},
         tokens::Token,
@@ -140,8 +140,10 @@ impl CodeEditor {
     }
 
     pub fn end(&mut self, cx: &mut Cx2d<'_>, view: &mut ViewMut<'_>) {
-        cx.turtle_mut()
-            .set_used(view.max_width() * self.cell_size.x, view.height() * self.cell_size.y);
+        cx.turtle_mut().set_used(
+            view.max_width() * self.cell_size.x,
+            view.height() * self.cell_size.y,
+        );
         self.scroll_bars.end(cx);
         if view.update_folds() {
             cx.cx.redraw_all();
@@ -187,7 +189,7 @@ impl CodeEditor {
             regions,
             line_index,
             byte_index: 0,
-            bias: Bias::Before,
+            bias: Affinity::Before,
             fold: Fold::default(),
             y,
             column_index: 0,
@@ -329,20 +331,20 @@ struct DrawSelectionCx<'a, 'b> {
     regions: Peekable<Iter<'a>>,
     line_index: usize,
     byte_index: usize,
-    bias: Bias,
+    bias: Affinity,
     fold: Fold,
     y: f64,
     column_index: usize,
 }
 
 impl<'a, 'b> DrawSelectionCx<'a, 'b> {
-    fn text_position(&self) -> BiasedPosition {
-        BiasedPosition {
+    fn text_position(&self) -> PositionWithAffinity {
+        PositionWithAffinity {
             position: Position {
                 line_index: self.line_index,
                 byte_index: self.byte_index,
             },
-            bias: self.bias,
+            affinity: self.bias,
         }
     }
 
@@ -365,7 +367,7 @@ impl<'a, 'b> DrawSelectionCx<'a, 'b> {
             Block::Line(false, line) => {
                 self.fold = line.fold();
                 self.visit_gap();
-                self.bias = Bias::After;
+                self.bias = Affinity::After;
                 for inline in line.inlines() {
                     self.visit_inline(inline);
                 }
@@ -373,7 +375,7 @@ impl<'a, 'b> DrawSelectionCx<'a, 'b> {
                 self.visit_new_row();
                 self.line_index += 1;
                 self.byte_index = 0;
-                self.bias = Bias::Before;
+                self.bias = Affinity::Before;
                 self.fold = Fold::default();
             }
             _ => {
@@ -410,9 +412,9 @@ impl<'a, 'b> DrawSelectionCx<'a, 'b> {
         self.visit_gap();
         self.byte_index += grapheme.len();
         self.column_index += grapheme.column_count();
-        self.bias = Bias::Before;
+        self.bias = Affinity::Before;
         self.visit_gap();
-        self.bias = Bias::After;
+        self.bias = Affinity::After;
     }
 
     fn visit_gap(&mut self) {
@@ -423,7 +425,7 @@ impl<'a, 'b> DrawSelectionCx<'a, 'b> {
             .map_or(false, |region| region.start() == text_position)
         {
             let region = self.regions.next().unwrap();
-            if region.cursor.position == text_position {
+            if region.cursor.biased_position == text_position {
                 self.draw_cursor();
             }
             self.active_region = Some(ActiveRegion {
@@ -440,8 +442,8 @@ impl<'a, 'b> DrawSelectionCx<'a, 'b> {
             self.draw_selection_rect();
             self.code_editor.draw_selection.end(self.cx);
             let region = self.active_region.take().unwrap().region;
-            if region.anchor.position != region.cursor.position.position
-                && region.cursor.position == text_position
+            if region.anchor.position != region.cursor.biased_position.position
+                && region.cursor.biased_position == text_position
             {
                 self.draw_cursor();
             }
