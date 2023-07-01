@@ -92,7 +92,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -109,7 +109,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -118,7 +118,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -143,39 +143,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -188,7 +188,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -198,7 +198,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -206,13 +206,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -227,9 +227,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -245,24 +245,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -272,7 +272,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -284,7 +284,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -297,14 +297,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -317,7 +317,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -326,7 +326,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -335,8 +335,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -345,7 +345,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -360,17 +360,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -402,8 +402,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -416,41 +416,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -460,7 +460,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -489,16 +489,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -508,16 +508,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -530,22 +530,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -572,7 +572,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -589,7 +589,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -599,15 +599,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -622,16 +622,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -646,33 +646,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -710,11 +710,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -749,8 +749,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -762,21 +762,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -786,8 +786,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -803,8 +803,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -824,8 +824,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -899,21 +899,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -921,7 +921,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -951,7 +951,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -972,14 +972,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -995,7 +995,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -1050,7 +1050,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -1080,11 +1080,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -1103,7 +1103,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -1121,7 +1121,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -1175,7 +1175,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -1196,59 +1196,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -1256,14 +1256,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -1278,7 +1278,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -1296,7 +1296,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -1322,69 +1322,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -1393,70 +1393,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -1477,17 +1477,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -1518,11 +1518,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -1556,10 +1556,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -1568,13 +1568,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -1641,22 +1641,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -1757,7 +1757,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -1774,7 +1774,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -1783,7 +1783,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -1808,39 +1808,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -1853,7 +1853,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -1863,7 +1863,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -1871,13 +1871,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -1892,9 +1892,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -1910,24 +1910,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -1937,7 +1937,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -1949,7 +1949,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -1962,14 +1962,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -1982,7 +1982,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -1991,7 +1991,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -2000,8 +2000,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -2010,7 +2010,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -2025,17 +2025,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -2067,8 +2067,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -2081,41 +2081,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -2125,7 +2125,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -2154,16 +2154,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -2173,16 +2173,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -2195,22 +2195,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -2237,7 +2237,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -2254,7 +2254,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -2264,15 +2264,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -2287,16 +2287,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -2311,33 +2311,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -2375,11 +2375,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -2414,8 +2414,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -2427,21 +2427,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -2451,8 +2451,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -2468,8 +2468,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -2489,8 +2489,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -2564,21 +2564,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -2586,7 +2586,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -2616,7 +2616,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -2637,14 +2637,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -2660,7 +2660,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -2715,7 +2715,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -2745,11 +2745,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -2768,7 +2768,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -2786,7 +2786,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -2840,7 +2840,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -2861,59 +2861,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -2921,14 +2921,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -2943,7 +2943,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -2961,7 +2961,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -2987,69 +2987,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -3058,70 +3058,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -3142,17 +3142,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -3183,11 +3183,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -3221,10 +3221,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -3233,13 +3233,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -3306,22 +3306,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -3422,7 +3422,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -3439,7 +3439,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -3448,7 +3448,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -3473,39 +3473,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -3518,7 +3518,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -3528,7 +3528,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -3536,13 +3536,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -3557,9 +3557,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -3575,24 +3575,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -3602,7 +3602,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -3614,7 +3614,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -3627,14 +3627,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -3647,7 +3647,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -3656,7 +3656,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -3665,8 +3665,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -3675,7 +3675,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -3690,17 +3690,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -3732,8 +3732,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -3746,41 +3746,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -3790,7 +3790,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -3819,16 +3819,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -3838,16 +3838,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -3860,22 +3860,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -3902,7 +3902,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -3919,7 +3919,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -3929,15 +3929,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -3952,16 +3952,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -3976,33 +3976,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -4040,11 +4040,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -4079,8 +4079,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -4092,21 +4092,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -4116,8 +4116,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -4133,8 +4133,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -4154,8 +4154,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -4229,21 +4229,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -4251,7 +4251,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -4281,7 +4281,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -4302,14 +4302,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -4325,7 +4325,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -4380,7 +4380,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -4410,11 +4410,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -4433,7 +4433,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -4451,7 +4451,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -4505,7 +4505,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -4526,59 +4526,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -4586,14 +4586,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -4608,7 +4608,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -4626,7 +4626,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -4652,69 +4652,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -4723,70 +4723,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -4807,17 +4807,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -4848,11 +4848,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -4886,10 +4886,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -4898,13 +4898,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -4971,22 +4971,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -5087,7 +5087,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -5104,7 +5104,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -5113,7 +5113,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -5138,39 +5138,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -5183,7 +5183,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -5193,7 +5193,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -5201,13 +5201,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -5222,9 +5222,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -5240,24 +5240,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -5267,7 +5267,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -5279,7 +5279,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -5292,14 +5292,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -5312,7 +5312,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -5321,7 +5321,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -5330,8 +5330,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -5340,7 +5340,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -5355,17 +5355,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -5397,8 +5397,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -5411,41 +5411,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -5455,7 +5455,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -5484,16 +5484,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -5503,16 +5503,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -5525,22 +5525,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -5567,7 +5567,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -5584,7 +5584,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -5594,15 +5594,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -5617,16 +5617,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -5641,33 +5641,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -5705,11 +5705,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -5744,8 +5744,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -5757,21 +5757,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -5781,8 +5781,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -5798,8 +5798,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -5819,8 +5819,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -5894,21 +5894,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -5916,7 +5916,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -5946,7 +5946,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -5967,14 +5967,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -5990,7 +5990,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -6045,7 +6045,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -6075,11 +6075,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -6098,7 +6098,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -6116,7 +6116,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -6170,7 +6170,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -6191,59 +6191,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -6251,14 +6251,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -6273,7 +6273,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -6291,7 +6291,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -6317,69 +6317,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -6388,70 +6388,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -6472,17 +6472,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -6513,11 +6513,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -6551,10 +6551,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -6563,13 +6563,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -6636,22 +6636,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -6752,7 +6752,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -6769,7 +6769,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -6778,7 +6778,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -6803,39 +6803,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -6848,7 +6848,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -6858,7 +6858,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -6866,13 +6866,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -6887,9 +6887,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -6905,24 +6905,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -6932,7 +6932,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -6944,7 +6944,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -6957,14 +6957,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -6977,7 +6977,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -6986,7 +6986,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -6995,8 +6995,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -7005,7 +7005,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -7020,17 +7020,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -7062,8 +7062,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -7076,41 +7076,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -7120,7 +7120,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -7149,16 +7149,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -7168,16 +7168,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -7190,22 +7190,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -7232,7 +7232,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -7249,7 +7249,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -7259,15 +7259,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -7282,16 +7282,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -7306,33 +7306,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -7370,11 +7370,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -7409,8 +7409,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -7422,21 +7422,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -7446,8 +7446,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -7463,8 +7463,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -7484,8 +7484,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -7559,21 +7559,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -7581,7 +7581,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -7611,7 +7611,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -7632,14 +7632,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -7655,7 +7655,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -7710,7 +7710,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -7740,11 +7740,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -7763,7 +7763,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -7781,7 +7781,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -7835,7 +7835,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -7856,59 +7856,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -7916,14 +7916,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -7938,7 +7938,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -7956,7 +7956,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -7982,69 +7982,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -8053,70 +8053,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -8137,17 +8137,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -8178,11 +8178,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -8216,10 +8216,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -8228,13 +8228,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -8301,22 +8301,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -8417,7 +8417,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -8434,7 +8434,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -8443,7 +8443,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -8468,39 +8468,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -8513,7 +8513,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -8523,7 +8523,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -8531,13 +8531,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -8552,9 +8552,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -8570,24 +8570,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -8597,7 +8597,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -8609,7 +8609,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -8622,14 +8622,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -8642,7 +8642,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -8651,7 +8651,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -8660,8 +8660,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -8670,7 +8670,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -8685,17 +8685,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -8727,8 +8727,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -8741,41 +8741,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -8785,7 +8785,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -8814,16 +8814,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -8833,16 +8833,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -8855,22 +8855,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -8897,7 +8897,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -8914,7 +8914,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -8924,15 +8924,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -8947,16 +8947,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -8971,33 +8971,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -9035,11 +9035,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -9074,8 +9074,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -9087,21 +9087,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -9111,8 +9111,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -9128,8 +9128,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -9149,8 +9149,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -9224,21 +9224,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -9246,7 +9246,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -9276,7 +9276,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -9297,14 +9297,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -9320,7 +9320,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -9375,7 +9375,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -9405,11 +9405,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -9428,7 +9428,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -9446,7 +9446,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -9500,7 +9500,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -9521,59 +9521,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -9581,14 +9581,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -9603,7 +9603,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -9621,7 +9621,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -9647,69 +9647,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -9718,70 +9718,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -9802,17 +9802,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -9843,11 +9843,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -9881,10 +9881,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -9893,13 +9893,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -9966,22 +9966,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -10082,7 +10082,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -10099,7 +10099,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -10108,7 +10108,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -10133,39 +10133,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -10178,7 +10178,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -10188,7 +10188,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -10196,13 +10196,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -10217,9 +10217,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -10235,24 +10235,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -10262,7 +10262,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -10274,7 +10274,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -10287,14 +10287,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -10307,7 +10307,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -10316,7 +10316,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -10325,8 +10325,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -10335,7 +10335,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -10350,17 +10350,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -10392,8 +10392,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -10406,41 +10406,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -10450,7 +10450,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -10479,16 +10479,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -10498,16 +10498,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -10520,22 +10520,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -10562,7 +10562,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -10579,7 +10579,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -10589,15 +10589,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -10612,16 +10612,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -10636,33 +10636,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -10700,11 +10700,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -10739,8 +10739,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -10752,21 +10752,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -10776,8 +10776,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -10793,8 +10793,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -10814,8 +10814,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -10889,21 +10889,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -10911,7 +10911,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -10941,7 +10941,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -10962,14 +10962,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -10985,7 +10985,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -11040,7 +11040,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -11070,11 +11070,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -11093,7 +11093,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -11111,7 +11111,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -11165,7 +11165,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -11186,59 +11186,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -11246,14 +11246,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -11268,7 +11268,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -11286,7 +11286,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -11312,69 +11312,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -11383,70 +11383,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -11467,17 +11467,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -11508,11 +11508,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -11546,10 +11546,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -11558,13 +11558,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -11631,22 +11631,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -11747,7 +11747,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -11764,7 +11764,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -11773,7 +11773,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -11798,39 +11798,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -11843,7 +11843,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -11853,7 +11853,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -11861,13 +11861,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -11882,9 +11882,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -11900,24 +11900,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -11927,7 +11927,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -11939,7 +11939,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -11952,14 +11952,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -11972,7 +11972,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -11981,7 +11981,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -11990,8 +11990,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -12000,7 +12000,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -12015,17 +12015,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -12057,8 +12057,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -12071,41 +12071,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -12115,7 +12115,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -12144,16 +12144,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -12163,16 +12163,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -12185,22 +12185,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -12227,7 +12227,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -12244,7 +12244,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -12254,15 +12254,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -12277,16 +12277,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -12301,33 +12301,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -12365,11 +12365,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -12404,8 +12404,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -12417,21 +12417,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -12441,8 +12441,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -12458,8 +12458,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -12479,8 +12479,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -12554,21 +12554,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -12576,7 +12576,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -12606,7 +12606,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -12627,14 +12627,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -12650,7 +12650,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -12705,7 +12705,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -12735,11 +12735,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -12758,7 +12758,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -12776,7 +12776,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -12830,7 +12830,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -12851,59 +12851,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -12911,14 +12911,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -12933,7 +12933,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -12951,7 +12951,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -12977,69 +12977,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -13048,70 +13048,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -13132,17 +13132,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -13173,11 +13173,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -13211,10 +13211,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -13223,13 +13223,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -13296,22 +13296,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -13412,7 +13412,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -13429,7 +13429,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -13438,7 +13438,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -13463,39 +13463,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -13508,7 +13508,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -13518,7 +13518,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -13526,13 +13526,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -13547,9 +13547,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -13565,24 +13565,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -13592,7 +13592,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -13604,7 +13604,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -13617,14 +13617,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -13637,7 +13637,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -13646,7 +13646,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -13655,8 +13655,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -13665,7 +13665,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -13680,17 +13680,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -13722,8 +13722,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -13736,41 +13736,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -13780,7 +13780,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -13809,16 +13809,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -13828,16 +13828,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -13850,22 +13850,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -13892,7 +13892,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -13909,7 +13909,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -13919,15 +13919,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -13942,16 +13942,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -13966,33 +13966,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -14030,11 +14030,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -14069,8 +14069,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -14082,21 +14082,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -14106,8 +14106,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -14123,8 +14123,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -14144,8 +14144,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -14219,21 +14219,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -14241,7 +14241,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -14271,7 +14271,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -14292,14 +14292,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -14315,7 +14315,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -14370,7 +14370,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -14400,11 +14400,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -14423,7 +14423,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -14441,7 +14441,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -14495,7 +14495,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -14516,59 +14516,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -14576,14 +14576,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -14598,7 +14598,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -14616,7 +14616,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -14642,69 +14642,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -14713,70 +14713,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -14797,17 +14797,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -14838,11 +14838,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -14876,10 +14876,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -14888,13 +14888,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -14961,22 +14961,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -15077,7 +15077,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -15094,7 +15094,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -15103,7 +15103,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -15128,39 +15128,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -15173,7 +15173,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -15183,7 +15183,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -15191,13 +15191,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -15212,9 +15212,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -15230,24 +15230,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -15257,7 +15257,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -15269,7 +15269,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -15282,14 +15282,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -15302,7 +15302,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -15311,7 +15311,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -15320,8 +15320,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -15330,7 +15330,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -15345,17 +15345,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -15387,8 +15387,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -15401,41 +15401,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -15445,7 +15445,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -15474,16 +15474,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -15493,16 +15493,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -15515,22 +15515,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -15557,7 +15557,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -15574,7 +15574,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -15584,15 +15584,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -15607,16 +15607,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -15631,33 +15631,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -15695,11 +15695,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -15734,8 +15734,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -15747,21 +15747,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -15771,8 +15771,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -15788,8 +15788,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -15809,8 +15809,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -15884,21 +15884,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -15906,7 +15906,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -15936,7 +15936,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -15957,14 +15957,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -15980,7 +15980,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -16035,7 +16035,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -16065,11 +16065,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -16088,7 +16088,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -16106,7 +16106,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -16160,7 +16160,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -16181,59 +16181,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -16241,14 +16241,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -16263,7 +16263,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -16281,7 +16281,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -16307,69 +16307,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -16378,70 +16378,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -16462,17 +16462,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -16503,11 +16503,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -16541,10 +16541,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -16553,13 +16553,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -16626,22 +16626,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -16742,7 +16742,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -16759,7 +16759,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -16768,7 +16768,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -16793,39 +16793,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -16838,7 +16838,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -16848,7 +16848,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -16856,13 +16856,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -16877,9 +16877,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -16895,24 +16895,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -16922,7 +16922,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -16934,7 +16934,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -16947,14 +16947,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -16967,7 +16967,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -16976,7 +16976,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -16985,8 +16985,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -16995,7 +16995,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -17010,17 +17010,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -17052,8 +17052,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -17066,41 +17066,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -17110,7 +17110,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -17139,16 +17139,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -17158,16 +17158,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -17180,22 +17180,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -17222,7 +17222,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -17239,7 +17239,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -17249,15 +17249,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -17272,16 +17272,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -17296,33 +17296,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -17360,11 +17360,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -17399,8 +17399,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -17412,21 +17412,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -17436,8 +17436,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -17453,8 +17453,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -17474,8 +17474,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -17549,21 +17549,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -17571,7 +17571,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -17601,7 +17601,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -17622,14 +17622,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -17645,7 +17645,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -17700,7 +17700,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -17730,11 +17730,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -17753,7 +17753,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -17771,7 +17771,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -17825,7 +17825,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -17846,59 +17846,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -17906,14 +17906,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -17928,7 +17928,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -17946,7 +17946,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -17972,69 +17972,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -18043,70 +18043,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -18127,17 +18127,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -18168,11 +18168,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -18206,10 +18206,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -18218,13 +18218,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -18291,22 +18291,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -18407,7 +18407,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -18424,7 +18424,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -18433,7 +18433,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -18458,39 +18458,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -18503,7 +18503,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -18513,7 +18513,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -18521,13 +18521,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -18542,9 +18542,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -18560,24 +18560,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -18587,7 +18587,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -18599,7 +18599,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -18612,14 +18612,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -18632,7 +18632,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -18641,7 +18641,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -18650,8 +18650,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -18660,7 +18660,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -18675,17 +18675,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -18717,8 +18717,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -18731,41 +18731,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -18775,7 +18775,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -18804,16 +18804,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -18823,16 +18823,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -18845,22 +18845,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -18887,7 +18887,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -18904,7 +18904,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -18914,15 +18914,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -18937,16 +18937,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -18961,33 +18961,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -19025,11 +19025,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -19064,8 +19064,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -19077,21 +19077,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -19101,8 +19101,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -19118,8 +19118,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -19139,8 +19139,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -19214,21 +19214,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -19236,7 +19236,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -19266,7 +19266,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -19287,14 +19287,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -19310,7 +19310,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -19365,7 +19365,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -19395,11 +19395,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -19418,7 +19418,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -19436,7 +19436,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -19490,7 +19490,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -19511,59 +19511,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -19571,14 +19571,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -19593,7 +19593,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -19611,7 +19611,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -19637,69 +19637,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -19708,70 +19708,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -19792,17 +19792,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -19833,11 +19833,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -19871,10 +19871,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -19883,13 +19883,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -19956,22 +19956,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -20072,7 +20072,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -20089,7 +20089,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -20098,7 +20098,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -20123,39 +20123,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -20168,7 +20168,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -20178,7 +20178,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -20186,13 +20186,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -20207,9 +20207,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -20225,24 +20225,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -20252,7 +20252,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -20264,7 +20264,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -20277,14 +20277,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -20297,7 +20297,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -20306,7 +20306,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -20315,8 +20315,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -20325,7 +20325,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -20340,17 +20340,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -20382,8 +20382,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -20396,41 +20396,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -20440,7 +20440,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -20469,16 +20469,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -20488,16 +20488,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -20510,22 +20510,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -20552,7 +20552,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -20569,7 +20569,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -20579,15 +20579,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -20602,16 +20602,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -20626,33 +20626,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -20690,11 +20690,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -20729,8 +20729,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -20742,21 +20742,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -20766,8 +20766,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -20783,8 +20783,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -20804,8 +20804,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -20879,21 +20879,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -20901,7 +20901,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -20931,7 +20931,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -20952,14 +20952,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -20975,7 +20975,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -21030,7 +21030,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -21060,11 +21060,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -21083,7 +21083,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -21101,7 +21101,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -21155,7 +21155,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -21176,59 +21176,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -21236,14 +21236,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -21258,7 +21258,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -21276,7 +21276,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -21302,69 +21302,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -21373,70 +21373,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -21457,17 +21457,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -21498,11 +21498,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -21536,10 +21536,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -21548,13 +21548,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -21621,22 +21621,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -21737,7 +21737,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -21754,7 +21754,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -21763,7 +21763,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -21788,39 +21788,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -21833,7 +21833,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -21843,7 +21843,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -21851,13 +21851,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -21872,9 +21872,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -21890,24 +21890,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -21917,7 +21917,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -21929,7 +21929,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -21942,14 +21942,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -21962,7 +21962,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -21971,7 +21971,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -21980,8 +21980,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -21990,7 +21990,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -22005,17 +22005,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -22047,8 +22047,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -22061,41 +22061,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -22105,7 +22105,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -22134,16 +22134,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -22153,16 +22153,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -22175,22 +22175,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -22217,7 +22217,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -22234,7 +22234,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -22244,15 +22244,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -22267,16 +22267,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -22291,33 +22291,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -22355,11 +22355,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -22394,8 +22394,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -22407,21 +22407,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -22431,8 +22431,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -22448,8 +22448,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -22469,8 +22469,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -22544,21 +22544,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -22566,7 +22566,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -22596,7 +22596,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -22617,14 +22617,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -22640,7 +22640,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -22695,7 +22695,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -22725,11 +22725,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -22748,7 +22748,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -22766,7 +22766,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -22820,7 +22820,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -22841,59 +22841,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -22901,14 +22901,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -22923,7 +22923,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -22941,7 +22941,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -22967,69 +22967,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -23038,70 +23038,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -23122,17 +23122,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -23163,11 +23163,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -23201,10 +23201,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -23213,13 +23213,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -23286,22 +23286,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -23402,7 +23402,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -23419,7 +23419,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -23428,7 +23428,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -23453,39 +23453,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -23498,7 +23498,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -23508,7 +23508,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -23516,13 +23516,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -23537,9 +23537,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -23555,24 +23555,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -23582,7 +23582,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -23594,7 +23594,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -23607,14 +23607,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -23627,7 +23627,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -23636,7 +23636,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -23645,8 +23645,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -23655,7 +23655,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -23670,17 +23670,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -23712,8 +23712,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -23726,41 +23726,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -23770,7 +23770,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -23799,16 +23799,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -23818,16 +23818,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -23840,22 +23840,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -23882,7 +23882,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -23899,7 +23899,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -23909,15 +23909,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -23932,16 +23932,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -23956,33 +23956,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -24020,11 +24020,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -24059,8 +24059,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -24072,21 +24072,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -24096,8 +24096,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -24113,8 +24113,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -24134,8 +24134,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -24209,21 +24209,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -24231,7 +24231,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -24261,7 +24261,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -24282,14 +24282,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -24305,7 +24305,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -24360,7 +24360,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -24390,11 +24390,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -24413,7 +24413,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -24431,7 +24431,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -24485,7 +24485,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -24506,59 +24506,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -24566,14 +24566,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -24588,7 +24588,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -24606,7 +24606,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -24632,69 +24632,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -24703,70 +24703,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -24787,17 +24787,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -24828,11 +24828,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -24866,10 +24866,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -24878,13 +24878,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -24951,22 +24951,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }
@@ -25067,7 +25067,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -25084,7 +25084,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -25093,7 +25093,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -25118,39 +25118,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -25163,7 +25163,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -25173,7 +25173,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -25181,13 +25181,13 @@ impl<T> Default for Arena<T> {
 impl<T> Index<Id<T>> for Arena<T> {
     type Output = T;
 
-    fn idx(&self, id: Id<T>) -> &Self::Output {
+    fn index(&self, id: Id<T>) -> &Self::Output {
         self.get(id).unwrap()
     }
 }
 
 impl<T> IndexMut<Id<T>> for Arena<T> {
-    fn idx_mut(&mut self, id: Id<T>) -> &mut Self::Output {
+    fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         self.get_mut(id).unwrap()
     }
 }
@@ -25202,9 +25202,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -25220,24 +25220,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -25247,7 +25247,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -25259,7 +25259,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -25272,14 +25272,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -25292,7 +25292,7 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }
 use {
     crate::{inlay::BlockInlay, Line, Lines},
@@ -25301,7 +25301,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Blocks<'a> {
-    line_idx: usize,
+    line_index: usize,
     lines: Lines<'a>,
     inlays: Iter<'a, (usize, BlockInlay)>,
 }
@@ -25310,8 +25310,8 @@ impl<'a> Iterator for Blocks<'a> {
     type Item = Block<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some((idx, _)) = self.inlays.as_slice().first() {
-            if *idx == self.line_idx {
+        if let Some((index, _)) = self.inlays.as_slice().first() {
+            if *index == self.line_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 return Some(Block::Line {
                     is_inlay: true,
@@ -25320,7 +25320,7 @@ impl<'a> Iterator for Blocks<'a> {
             }
         }
         let line = self.lines.next()?;
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(Block::Line {
             is_inlay: false,
             line,
@@ -25335,17 +25335,17 @@ pub enum Block<'a> {
 
 pub fn blocks<'a>(lines: Lines<'a>, inlays: Iter<'a, (usize, BlockInlay)>) -> Blocks<'a> {
     Blocks {
-        line_idx: 0,
+        line_index: 0,
         lines,
         inlays,
     }
 }
 pub trait CharExt {
-    fn col_count(self) -> usize;
+    fn column_count(self) -> usize;
 }
 
 impl CharExt for char {
-    fn col_count(self) -> usize {
+    fn column_count(self) -> usize {
         if self == '\t' {
             4
         } else {
@@ -25377,8 +25377,8 @@ live_design! {
             draw_depth: 0.0,
             text_style: <FONT_CODE> {},
         },
-        inlay_color: #C00000
-        token_color: #C0C0C0
+        inlay_columnor: #C00000
+        token_columnor: #C0C0C0
     }
 }
 
@@ -25391,41 +25391,41 @@ pub struct CodeEditor {
     #[live]
     draw_text: DrawText,
     #[live]
-    inlay_color: Vec4,
+    inlay_columnor: Vec4,
     #[live]
-    token_color: Vec4,
+    token_columnor: Vec4,
 }
 
 impl CodeEditor {
     pub fn draw(&mut self, cx: &mut Cx2d<'_>, state: &mut State, session_id: SessionId) {
         let DVec2 {
-            x: col_width,
+            x: column_width,
             y: row_height,
         } = self.draw_text.text_style.font_size * self.draw_text.get_monospace_base(cx);
 
-        state.view_mut(session_id).set_wrap_col_idx(Some(
-            (cx.turtle().rect().size.x / col_width as f64) as usize,
+        state.view_mut(session_id).set_wrap_column_index(Some(
+            (cx.turtle().rect().size.x / column_width as f64) as usize,
         ));
         
         self.scroll_bars.begin(cx, self.walk, Layout::default());
-        let scroll_pos = self.scroll_bars.get_scroll_pos();
+        let scroll_position = self.scroll_bars.get_scroll_position();
 
         let view = state.view(session_id);
-        let start_line_idx = view.find_first_line_ending_after_y(scroll_pos.y / row_height);
-        let end_line_idx = view.find_last_line_starting_before_y((scroll_pos.y + cx.turtle().rect().size.y) / row_height);
+        let start_line_index = view.find_first_line_ending_after_y(scroll_position.y / row_height);
+        let end_line_index = view.find_last_line_starting_before_y((scroll_position.y + cx.turtle().rect().size.y) / row_height);
         let mut context = DrawContext {
             draw_text: &mut self.draw_text,
             row_height,
-            col_width,
-            inlay_color: self.inlay_color,
-            token_color: self.token_color,
-            scroll_pos,
-            row_y: view.line_y(start_line_idx) * row_height,
-            col_idx: 0,
+            column_width,
+            inlay_columnor: self.inlay_columnor,
+            token_columnor: self.token_columnor,
+            scroll_position,
+            row_y: view.line_y(start_line_index) * row_height,
+            column_index: 0,
             inlay: false,
             fold_state: FoldingState::default(),
         };
-        for block in view.blocks(start_line_idx, end_line_idx) {
+        for block in view.blocks(start_line_index, end_line_index) {
             context.draw_block(cx, block);
         }
 
@@ -25435,7 +25435,7 @@ impl CodeEditor {
             match block {
                 Block::Line { line, .. } => {
                     height += line.height() * row_height;
-                    max_width = max_width.max(line.width()) * col_width;
+                    max_width = max_width.max(line.width()) * column_width;
                 }
             }
         }
@@ -25464,16 +25464,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.fold_line(line_idx, 8);
+                        view.fold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -25483,16 +25483,16 @@ impl CodeEditor {
                 ..
             }) => {
                 let mut view = state.view_mut(session_id);
-                for line_idx in 0..view.line_count() {
+                for line_index in 0..view.line_count() {
                     if view
-                        .line(line_idx)
+                        .line(line_index)
                         .text()
                         .chars()
                         .take_while(|char| char.is_whitespace())
                         .count()
                         >= 8
                     {
-                        view.unfold_line(line_idx, 8);
+                        view.unfold_line(line_index, 8);
                     }
                 }
                 cx.redraw_all();
@@ -25505,22 +25505,22 @@ impl CodeEditor {
 struct DrawContext<'a> {
     draw_text: &'a mut DrawText,
     row_height: f64,
-    col_width: f64,
-    inlay_color: Vec4,
-    token_color: Vec4,
-    scroll_pos: DVec2,
+    column_width: f64,
+    inlay_columnor: Vec4,
+    token_columnor: Vec4,
+    scroll_position: DVec2,
     row_y: f64,
-    col_idx: usize,
+    column_index: usize,
     inlay: bool,
     fold_state: FoldingState,
 }
 
 impl<'a> DrawContext<'a> {
-    fn pos(&self) -> DVec2 {
+    fn position(&self) -> DVec2 {
         DVec2 {
-            x: self.fold_state.col_x(self.col_idx) * self.col_width,
+            x: self.fold_state.column_x(self.column_index) * self.column_width,
             y: self.row_y,
-        } - self.scroll_pos
+        } - self.scroll_position
     }
 
     fn draw_block(&mut self, cx: &mut Cx2d<'_>, block: Block<'_>) {
@@ -25547,7 +25547,7 @@ impl<'a> DrawContext<'a> {
         for inline in line.inlines() {
             self.draw_inline(cx, inline);
         }
-        self.col_idx = 0;
+        self.column_index = 0;
         self.row_y += self.fold_state.scale * self.row_height;
         self.fold_state = FoldingState::default();
     }
@@ -25564,7 +25564,7 @@ impl<'a> DrawContext<'a> {
                 self.inlay = old_inlay;
             }
             Inline::Break => {
-                self.col_idx = 0;
+                self.column_index = 0;
                 self.row_y += self.fold_state.scale * self.row_height;
             }
         }
@@ -25574,15 +25574,15 @@ impl<'a> DrawContext<'a> {
         use crate::{state::TokenKind, StrExt};
 
         self.draw_text.font_scale = self.fold_state.scale;
-        self.draw_text.color = if self.inlay {
-            self.inlay_color
+        self.draw_text.columnor = if self.inlay {
+            self.inlay_columnor
         } else {
-            self.token_color
+            self.token_columnor
         };
         if token.kind != TokenKind::Whitespace {
-            self.draw_text.draw_abs(cx, self.pos(), token.text);
+            self.draw_text.draw_abs(cx, self.position(), token.text);
         }
-        self.col_idx += token.text.col_count();
+        self.column_index += token.text.column_count();
     }
 }
 use std::collections::{HashMap, HashSet};
@@ -25597,16 +25597,16 @@ pub enum FoldState {
 
 impl FoldState {
     pub fn new(
-        idx: usize,
+        index: usize,
         folded: &HashSet<usize>,
         folding_lines: &HashMap<usize, FoldingState>,
         unfolding_lines: &HashMap<usize, FoldingState>,
     ) -> Self {
-        if folded.contains(&idx) {
+        if folded.contains(&index) {
             Self::Folded
-        } else if let Some(folding) = folding_lines.get(&idx) {
+        } else if let Some(folding) = folding_lines.get(&index) {
             Self::Folding(*folding)
-        } else if let Some(unfolding) = unfolding_lines.get(&idx) {
+        } else if let Some(unfolding) = unfolding_lines.get(&index) {
             Self::Unfolding(*unfolding)
         } else {
             Self::Unfolded
@@ -25621,33 +25621,33 @@ impl FoldState {
         }
     }
 
-    pub fn col_x(self, col_idx: usize) -> f64 {
+    pub fn column_x(self, column_index: usize) -> f64 {
         match self {
             Self::Folded => 0.0,
-            Self::Folding(state) | Self::Unfolding(state) => state.col_x(col_idx),
-            Self::Unfolded => col_idx as f64,
+            Self::Folding(state) | Self::Unfolding(state) => state.column_x(column_index),
+            Self::Unfolded => column_index as f64,
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct FoldingState {
-    pub col_idx: usize,
+    pub column_index: usize,
     pub scale: f64,
 }
 
 impl FoldingState {
-    pub fn col_x(self, col_idx: usize) -> f64 {
-        let col_count_before = col_idx.min(self.col_idx);
-        let col_count_after = col_idx - col_count_before;
-        col_count_before as f64 + self.scale * col_count_after as f64
+    pub fn column_x(self, column_index: usize) -> f64 {
+        let column_count_before = column_index.min(self.column_index);
+        let column_count_after = column_index - column_count_before;
+        column_count_before as f64 + self.scale * column_count_after as f64
     }
 }
 
 impl Default for FoldingState {
     fn default() -> Self {
         Self {
-            col_idx: 0,
+            column_index: 0,
             scale: 1.0,
         }
     }
@@ -25685,11 +25685,11 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
-        self.breaks = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.breaks = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };
@@ -25724,8 +25724,8 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Inlines<'a> {
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
     inlay_tokens: Option<Tokens<'a>>,
     token: Option<Token<'a>>,
     tokens: Tokens<'a>,
@@ -25737,21 +25737,21 @@ impl<'a> Iterator for Inlines<'a> {
     type Item = Inline<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(inlay_byte_idx) = self.breaks.as_slice().first() {
-            if *inlay_byte_idx == self.inlay_byte_idx {
+        if let Some(inlay_byte_index) = self.breaks.as_slice().first() {
+            if *inlay_byte_index == self.inlay_byte_index {
                 self.breaks.next().unwrap();
                 return Some(Inline::Break);
             }
         }
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            if *byte_idx == self.byte_idx {
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            if *byte_index == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token {
                     is_inlay: true,
                     token,
@@ -25761,8 +25761,8 @@ impl<'a> Iterator for Inlines<'a> {
         }
         let token = self.token?;
         let mut byte_count = token.text.len();
-        if let Some((byte_idx, _)) = self.inlays.as_slice().first() {
-            byte_count = byte_count.min(byte_idx - self.byte_idx);
+        if let Some((byte_index, _)) = self.inlays.as_slice().first() {
+            byte_count = byte_count.min(byte_index - self.byte_index);
         }
         let token = if byte_count < token.text.len() {
             let (text_0, text_1) = token.text.split_at(byte_count);
@@ -25778,8 +25778,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token {
             is_inlay: false,
             token,
@@ -25799,8 +25799,8 @@ pub fn inlines<'a>(
     breaks: Iter<'a, usize>,
 ) -> Inlines<'a> {
     Inlines {
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
         inlay_tokens: None,
         token: tokens.next(),
         tokens,
@@ -25874,21 +25874,21 @@ impl<'a> Line<'a> {
         self.breaks.len() + 1
     }
 
-    pub fn col_count(&self) -> usize {
+    pub fn column_count(&self) -> usize {
         use {crate::inlines::Inline, crate::StrExt};
 
-        let mut col_count = 0;
-        let mut max_col_count = 0;
+        let mut column_count = 0;
+        let mut max_column_count = 0;
         for inline in self.inlines() {
             match inline {
                 Inline::Token { token, .. } => {
-                    col_count += token.text.col_count();
-                    max_col_count = max_col_count.max(col_count);
+                    column_count += token.text.column_count();
+                    max_column_count = max_column_count.max(column_count);
                 }
-                Inline::Break => col_count = 0,
+                Inline::Break => column_count = 0,
             }
         }
-        max_col_count
+        max_column_count
     }
 
     pub fn height(&self) -> f64 {
@@ -25896,7 +25896,7 @@ impl<'a> Line<'a> {
     }
 
     pub fn width(&self) -> f64 {
-        self.fold_state.col_x(self.col_count())
+        self.fold_state.column_x(self.column_count())
     }
 
     pub fn text(&self) -> &str {
@@ -25926,7 +25926,7 @@ use {
 
 #[derive(Clone, Debug)]
 pub struct Lines<'a> {
-    line_idx: usize,
+    line_index: usize,
     text: Iter<'a, String>,
     token_infos: Iter<'a, Vec<TokenInfo>>,
     inlays: Iter<'a, Vec<(usize, InlineInlay)>>,
@@ -25947,14 +25947,14 @@ impl<'a> Iterator for Lines<'a> {
             self.inlays.next()?,
             self.breaks.next()?,
             FoldState::new(
-                self.line_idx,
+                self.line_index,
                 &self.folded,
                 &self.folding,
                 &self.unfolding,
             ),
             *self.heights.next()?,
         );
-        self.line_idx += 1;
+        self.line_index += 1;
         Some(line)
     }
 }
@@ -25970,7 +25970,7 @@ pub fn lines<'a>(
     height: Iter<'a, f64>,
 ) -> Lines<'a> {
     Lines {
-        line_idx: 0,
+        line_index: 0,
         text,
         token_infos,
         inlays,
@@ -26025,7 +26025,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                wrap_col_idx: None,
+                wrap_column_index: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -26055,11 +26055,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..5 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..5 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_height(line_index);
         }
         Ok(session_id)
     }
@@ -26078,7 +26078,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            wrap_col_idx: session.wrap_col_idx,
+            wrap_column_index: session.wrap_column_index,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -26096,7 +26096,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            wrap_col_idx: &mut session.wrap_col_idx,
+            wrap_column_index: &mut session.wrap_column_index,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -26150,7 +26150,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -26171,59 +26171,59 @@ impl<'a> View<'a> {
     pub fn find_first_line_ending_after_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
     pub fn find_last_line_starting_before_y(&self, y: f64) -> usize {
         self.update_summed_heights();
         match self.summed_heights.borrow().binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap()) {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         Line::new(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.breaks[line_idx],
-            FoldState::new(line_idx, &self.folded, &self.folding, &self.unfolding),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.breaks[line_index],
+            FoldState::new(line_index, &self.folded, &self.folding, &self.unfolding),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
+    pub fn line_y(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        if line_idx == 0 {
+        if line_index == 0 {
             0.0
         } else {
-            self.summed_heights.borrow()[line_idx - 1]
+            self.summed_heights.borrow()[line_index - 1]
         }
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'a> {
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'a> {
         crate::lines(
-            self.text[start_line_idx..end_line_idx].iter(),
-            self.token_infos[start_line_idx..end_line_idx].iter(),
-            self.inline_inlays[start_line_idx..end_line_idx].iter(),
-            self.breaks[start_line_idx..end_line_idx].iter(),
+            self.text[start_line_index..end_line_index].iter(),
+            self.token_infos[start_line_index..end_line_index].iter(),
+            self.inline_inlays[start_line_index..end_line_index].iter(),
+            self.breaks[start_line_index..end_line_index].iter(),
             &self.folded,
             &self.folding,
             &self.unfolding,
-            self.heights[start_line_idx..end_line_idx].iter(),
+            self.heights[start_line_index..end_line_index].iter(),
         )
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'a> {
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'a> {
         crate::blocks(
-            self.lines(start_line_idx, end_line_idx),
+            self.lines(start_line_index, end_line_index),
             self.block_inlays[self
                 .block_inlays
                 .iter()
-                .pos(|(line_idx, _)| *line_idx >= start_line_idx)
+                .position(|(line_index, _)| *line_index >= start_line_index)
                 .unwrap_or(self.block_inlays.len())..]
                 .iter(),
         )
@@ -26231,14 +26231,14 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx, self.line_count()) {
+        for block in self.blocks(start_line_index, self.line_count()) {
             match block {
                 Block::Line { is_inlay, line } => {
                     summed_height += line.height();
@@ -26253,7 +26253,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    wrap_col_idx: &'a mut Option<usize>,
+    wrap_column_index: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -26271,7 +26271,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            wrap_col_idx: *self.wrap_col_idx,
+            wrap_column_index: *self.wrap_column_index,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -26297,69 +26297,69 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_last_line_starting_before_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_y(&self, line_idx: usize) -> f64 {
-        self.as_view().line_y(line_idx)
+    pub fn line_y(&self, line_index: usize) -> f64 {
+        self.as_view().line_y(line_index)
     }
 
-    pub fn lines(&self, start_line_idx: usize, end_line_idx: usize) -> Lines<'_> {
-        self.as_view().lines(start_line_idx, end_line_idx)
+    pub fn lines(&self, start_line_index: usize, end_line_index: usize) -> Lines<'_> {
+        self.as_view().lines(start_line_index, end_line_index)
     }
 
-    pub fn blocks(&self, start_line_idx: usize, end_line_idx: usize) -> Blocks<'_> {
-        self.as_view().blocks(start_line_idx, end_line_idx)
+    pub fn blocks(&self, start_line_index: usize, end_line_index: usize) -> Blocks<'_> {
+        self.as_view().blocks(start_line_index, end_line_index)
     }
 
-    pub fn set_wrap_col_idx(&mut self, wrap_col_idx: Option<usize>) {
-        if *self.wrap_col_idx != wrap_col_idx {
-            *self.wrap_col_idx = wrap_col_idx;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_wrap_column_index(&mut self, wrap_column_index: Option<usize>) {
+        if *self.wrap_column_index != wrap_column_index {
+            *self.wrap_column_index = wrap_column_index;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
             for (_, block_inlay) in self.block_inlays.iter_mut() {
                 let old_height = block_inlay.as_line().height();
-                block_inlay.wrap(wrap_col_idx);
+                block_inlay.wrap(wrap_column_index);
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
         self.folding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
         self.unfolding.insert(
-            line_idx,
+            line_index,
             FoldingState {
-                col_idx,
+                column_index,
                 scale,
             },
         );
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
     pub fn update_fold_states(&mut self) -> bool {
@@ -26368,70 +26368,70 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
             if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+                self.folded.insert(*line_index);
             } else {
-                self.new_folding.insert(*line_idx, state);
+                self.new_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.new_folding);
         self.new_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
             if 1.0 - state.scale > 0.001 {
-                self.new_unfolding.insert(*line_idx, state);
+                self.new_unfolding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.new_unfolding);
         self.new_unfolding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let Some(wrap_col_idx) = *self.wrap_col_idx {
-            wrap::wrap(self.line(line_idx), wrap_col_idx)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let Some(wrap_column_index) = *self.wrap_column_index {
+            wrap::wrap(self.line(line_index), wrap_column_index)
         } else {
             Vec::new()
         };
-        self.update_height(line_idx);
+        self.update_height(line_index);
     }
 
-    fn update_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
+    fn update_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
         let new_height = line.fold_state().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx + 1);
+            self.summed_heights.borrow_mut().truncate(line_index + 1);
         }
     }
 }
 
 #[derive(Debug)]
 struct Session {
-    wrap_col_idx: Option<usize>,
+    wrap_column_index: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,
@@ -26452,17 +26452,17 @@ struct Document {
     token_infos: Vec<Vec<TokenInfo>>,
 }
 pub trait StrExt {
-    fn col_count(&self) -> usize;
+    fn column_count(&self) -> usize;
     fn graphemes(&self) -> Graphemes<'_>;
     fn grapheme_indices(&self) -> GraphemeIndices<'_>;
     fn split_whitespace_boundaries(&self) -> SplitWhitespaceBoundaries<'_>;
 }
 
 impl StrExt for str {
-    fn col_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         use crate::CharExt;
 
-        self.chars().map(|char| char.col_count()).sum()
+        self.chars().map(|char| char.column_count()).sum()
     }
 
     fn graphemes(&self) -> Graphemes<'_> {
@@ -26493,11 +26493,11 @@ impl<'a> Iterator for Graphemes<'a> {
         if self.string.is_empty() {
             return None;
         }
-        let mut idx = 1;
-        while !self.string.is_char_boundary(idx) {
-            idx += 1;
+        let mut index = 1;
+        while !self.string.is_char_boundary(index) {
+            index += 1;
         }
-        let (grapheme, remaining_string) = self.string.split_at(idx);
+        let (grapheme, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(grapheme)
     }
@@ -26531,10 +26531,10 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
             return None;
         }
         let mut prev_grapheme_is_whitespace = None;
-        let idx = self
+        let index = self
             .string
             .grapheme_indices()
-            .find_map(|(idx, next_grapheme)| {
+            .find_map(|(index, next_grapheme)| {
                 let next_grapheme_is_whitespace =
                     next_grapheme.chars().all(|char| char.is_whitespace());
                 let is_whitespace_boundary =
@@ -26543,13 +26543,13 @@ impl<'a> Iterator for SplitWhitespaceBoundaries<'a> {
                     });
                 prev_grapheme_is_whitespace = Some(next_grapheme_is_whitespace);
                 if is_whitespace_boundary {
-                    Some(idx)
+                    Some(index)
                 } else {
                     None
                 }
             })
             .unwrap_or(self.string.len());
-        let (string, remaining_string) = self.string.split_at(idx);
+        let (string, remaining_string) = self.string.split_at(index);
         self.string = remaining_string;
         Some(string)
     }
@@ -26616,22 +26616,22 @@ pub fn tokens<'a>(text: &'a str, infos: Iter<'a, TokenInfo>) -> Tokens<'a> {
 }
 use crate::Line;
 
-pub fn wrap(line: Line<'_>, wrap_col_idx: usize) -> Vec<usize> {
+pub fn wrap(line: Line<'_>, wrap_column_index: usize) -> Vec<usize> {
     use crate::{inlines::Inline, StrExt};
 
     let mut breaks = Vec::new();
-    let mut inlay_byte_idx = 0;
-    let mut col_idx = 0;
+    let mut inlay_byte_index = 0;
+    let mut column_index = 0;
     for inline in line.inlines() {
         match inline {
             Inline::Token { token, .. } => {
-                let col_count: usize = token.text.col_count();
-                if col_idx + col_count > wrap_col_idx {
-                    breaks.push(inlay_byte_idx);
-                    col_idx = 0;
+                let column_count: usize = token.text.column_count();
+                if column_index + column_count > wrap_column_index {
+                    breaks.push(inlay_byte_index);
+                    column_index = 0;
                 }
-                inlay_byte_idx += token.text.len();
-                col_idx += col_count;
+                inlay_byte_index += token.text.len();
+                column_index += column_count;
             }
             _ => panic!(),
         }

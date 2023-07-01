@@ -12,7 +12,7 @@ pub struct Arena<T> {
     len: usize,
     entries: Vec<Entry<T>>,
     generation: usize,
-    first_vacant_idx: Option<usize>,
+    first_vacant_index: Option<usize>,
 }
 
 impl<T> Arena<T> {
@@ -29,7 +29,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get(&self, id: Id<T>) -> Option<&T> {
-        match self.entries.get(id.idx) {
+        match self.entries.get(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -38,7 +38,7 @@ impl<T> Arena<T> {
     }
 
     pub fn get_mut(&mut self, id: Id<T>) -> Option<&mut T> {
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, value }) if *generation == id.generation => {
                 Some(value)
             }
@@ -63,39 +63,39 @@ impl<T> Arena<T> {
             generation: self.generation,
             value,
         };
-        let idx = if let Some(idx) = self.first_vacant_idx {
-            match self.entries[idx] {
-                Entry::Vacant { next_vacant_idx } => {
-                    self.first_vacant_idx = next_vacant_idx;
-                    self.entries[idx] = entry;
-                    idx
+        let index = if let Some(index) = self.first_vacant_index {
+            match self.entries[index] {
+                Entry::Vacant { next_vacant_index } => {
+                    self.first_vacant_index = next_vacant_index;
+                    self.entries[index] = entry;
+                    index
                 }
                 _ => unreachable!(),
             }
         } else {
-            let idx = self.entries.len();
+            let index = self.entries.len();
             self.entries.push(entry);
-            idx
+            index
         };
-        Id::new(self.generation, idx)
+        Id::new(self.generation, index)
     }
 
     pub fn remove(&mut self, id: Id<T>) -> Option<T> {
         use std::mem;
 
-        match self.entries.get_mut(id.idx) {
+        match self.entries.get_mut(id.index) {
             Some(Entry::Occupied { generation, .. }) if *generation == id.generation => {
                 match mem::replace(
-                    &mut self.entries[id.idx],
+                    &mut self.entries[id.index],
                     Entry::Vacant {
-                        next_vacant_idx: self.first_vacant_idx,
+                        next_vacant_index: self.first_vacant_index,
                     },
                 ) {
                     Entry::Occupied { generation, value } => {
                         if generation == self.generation {
                             self.generation += 1;
                         }
-                        self.first_vacant_idx = Some(id.idx);
+                        self.first_vacant_index = Some(id.index);
                         Some(value)
                     }
                     _ => unreachable!(),
@@ -108,7 +108,7 @@ impl<T> Arena<T> {
     pub fn clear(&mut self) {
         self.entries.clear();
         self.generation += 1;
-        self.first_vacant_idx = None;
+        self.first_vacant_index = None;
     }
 }
 
@@ -118,7 +118,7 @@ impl<T> Default for Arena<T> {
             len: 0,
             entries: Vec::new(),
             generation: 0,
-            first_vacant_idx: None,
+            first_vacant_index: None,
         }
     }
 }
@@ -147,9 +147,9 @@ impl<'a, T> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
@@ -165,24 +165,24 @@ impl<'a, T> Iterator for IterMut<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            let (idx, entry) = self.iter.next()?;
+            let (index, entry) = self.iter.next()?;
             if let Entry::Occupied { generation, value } = entry {
-                break Some((Id::new(idx, *generation), value));
+                break Some((Id::new(index, *generation), value));
             }
         }
     }
 }
 
 pub struct Id<T> {
-    idx: usize,
+    index: usize,
     generation: usize,
     phantom: PhantomData<T>,
 }
 
 impl<T> Id<T> {
-    fn new(idx: usize, generation: usize) -> Self {
+    fn new(index: usize, generation: usize) -> Self {
         Self {
-            idx,
+            index,
             generation,
             phantom: PhantomData,
         }
@@ -192,7 +192,7 @@ impl<T> Id<T> {
 impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
-            idx: self.idx,
+            index: self.index,
             generation: self.generation,
             phantom: self.phantom,
         }
@@ -204,7 +204,7 @@ impl<T> Copy for Id<T> {}
 impl<T> fmt::Debug for Id<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Id")
-            .field("idx", &self.idx)
+            .field("index", &self.index)
             .field("generation", &self.generation)
             .finish_non_exhaustive()
     }
@@ -217,14 +217,14 @@ impl<T> Hash for Id<T> {
     where
         H: Hasher,
     {
-        self.idx.hash(hasher);
+        self.index.hash(hasher);
         self.generation.hash(hasher);
     }
 }
 
 impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
-        if self.idx != other.idx {
+        if self.index != other.index {
             return false;
         }
         if self.generation != other.generation {
@@ -237,5 +237,5 @@ impl<T> PartialEq for Id<T> {
 #[derive(Clone, Debug)]
 enum Entry<T> {
     Occupied { generation: usize, value: T },
-    Vacant { next_vacant_idx: Option<usize> },
+    Vacant { next_vacant_index: Option<usize> },
 }

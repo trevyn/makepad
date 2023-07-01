@@ -5,17 +5,15 @@ pub mod code_editor;
 pub mod fold;
 pub mod inlays;
 pub mod inlines;
-pub mod layout;
-pub mod len;
+pub mod length;
 pub mod line;
 pub mod lines;
-pub mod pos;
+pub mod position;
 pub mod selection;
 pub mod state;
 pub mod str;
 pub mod tokenize;
 pub mod tokens;
-pub mod visit;
 pub mod wrap;
 
 pub use self::{
@@ -24,11 +22,10 @@ pub use self::{
     code_editor::CodeEditor,
     fold::Fold,
     inlines::{inlines, Inlines},
-    layout::{layout, Layout},
-    len::Len,
+    length::Length,
     line::{line, Line},
     lines::{lines, Lines},
-    pos::Pos,
+    position::Position,
     selection::Selection,
     state::State,
     tokens::{tokens, Tokens},

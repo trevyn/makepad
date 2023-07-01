@@ -6,7 +6,7 @@ use {
         inlays::{BlockInlay, InlineInlay},
         selection::Cursor,
         tokenize::TokenInfo,
-        Arena, Blocks, Fold, Layout, Line, Lines, Selection,
+        Arena, Blocks, Fold, Line, Lines, Selection,
     },
     std::{
         cell::RefCell,
@@ -36,7 +36,7 @@ impl State {
         let document = &self.documents[document_id];
         let session_id = SessionId(
             self.sessions.insert(Session {
-                max_col_count: None,
+                max_column_count: None,
                 document_id,
                 inline_inlays: (0..document.text.len())
                     .map(|_| {
@@ -66,11 +66,11 @@ impl State {
         );
         self.documents[document_id].session_ids.insert(session_id.0);
         let mut view = self.view_mut(session_id);
-        for idx in 0..19 {
-            view.insert_block_inlay(idx * 10, BlockInlay::new("XXX YYY ZZZ"));
+        for index in 0..19 {
+            view.insert_block_inlay(index * 10, BlockInlay::new("XXX YYY ZZZ"));
         }
-        for line_idx in 0..view.line_count() {
-            view.update_line_height(line_idx);
+        for line_index in 0..view.line_count() {
+            view.update_line_height(line_index);
         }
         Ok(session_id)
     }
@@ -89,7 +89,7 @@ impl State {
         let session = &self.sessions[session_id.0];
         let document = &self.documents[session.document_id];
         View {
-            max_col_count: session.max_col_count,
+            max_column_count: session.max_column_count,
             text: &document.text,
             token_infos: &document.token_infos,
             inline_inlays: &session.inline_inlays,
@@ -108,7 +108,7 @@ impl State {
         let session = &mut self.sessions[session_id.0];
         let document = &mut self.documents[session.document_id];
         ViewMut {
-            max_col_count: &mut session.max_col_count,
+            max_column_count: &mut session.max_column_count,
             text: &mut document.text,
             token_infos: &mut document.token_infos,
             inline_inlays: &mut session.inline_inlays,
@@ -162,7 +162,7 @@ pub struct SessionId(Id<Session>);
 
 #[derive(Clone, Copy, Debug)]
 pub struct View<'a> {
-    max_col_count: Option<usize>,
+    max_column_count: Option<usize>,
     text: &'a [String],
     token_infos: &'a [Vec<TokenInfo>],
     inline_inlays: &'a [Vec<(usize, InlineInlay)>],
@@ -177,8 +177,20 @@ pub struct View<'a> {
 }
 
 impl<'a> View<'a> {
-    pub fn max_col_count(&self) -> Option<usize> {
-        self.max_col_count
+    pub fn max_column_count(&self) -> Option<usize> {
+        self.max_column_count
+    }
+
+    pub fn max_width(&self) -> f64 {
+        let mut max_width = 0.0f64;
+        for block in self.blocks(0..self.line_count()) {
+            max_width = max_width.max(block.width());
+        }
+        max_width
+    }
+
+    pub fn height(&self) -> f64 {
+        self.line_summed_height(self.line_count() - 1)
     }
 
     pub fn line_count(&self) -> usize {
@@ -192,8 +204,8 @@ impl<'a> View<'a> {
             .borrow()
             .binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap())
         {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx,
+            Ok(index) => index + 1,
+            Err(index) => index,
         }
     }
 
@@ -204,34 +216,34 @@ impl<'a> View<'a> {
             .borrow()
             .binary_search_by(|summed_height| summed_height.partial_cmp(&y).unwrap())
         {
-            Ok(idx) => idx + 1,
-            Err(idx) => {
-                if idx == self.line_count() {
-                    idx
+            Ok(index) => index + 1,
+            Err(index) => {
+                if index == self.line_count() {
+                    index
                 } else {
-                    idx + 1
+                    index + 1
                 }
             }
         }
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'a> {
+    pub fn line(&self, line_index: usize) -> Line<'a> {
         crate::line(
-            &self.text[line_idx],
-            &self.token_infos[line_idx],
-            &self.inline_inlays[line_idx],
-            &self.wraps[line_idx],
-            Fold::new(&self.folded, &self.folding, &self.unfolding, line_idx),
-            self.heights[line_idx],
+            &self.text[line_index],
+            &self.token_infos[line_index],
+            &self.inline_inlays[line_index],
+            &self.wraps[line_index],
+            Fold::new(&self.folded, &self.folding, &self.unfolding, line_index),
+            self.heights[line_index],
         )
     }
 
-    pub fn line_summed_height(&self, line_idx: usize) -> f64 {
+    pub fn line_summed_height(&self, line_index: usize) -> f64 {
         self.update_summed_heights();
-        self.summed_heights.borrow()[line_idx]
+        self.summed_heights.borrow()[line_index]
     }
 
-    pub fn lines(&self, line_idx_range: Range<usize>) -> Lines<'a> {
+    pub fn lines(&self, line_range: Range<usize>) -> Lines<'a> {
         crate::lines(
             self.text,
             self.token_infos,
@@ -241,16 +253,12 @@ impl<'a> View<'a> {
             &self.folding,
             &self.unfolding,
             self.heights,
-            line_idx_range,
+            line_range,
         )
     }
 
-    pub fn blocks(&self, line_idx_range: Range<usize>) -> Blocks<'a> {
-        crate::blocks(self.lines(line_idx_range), self.block_inlays)
-    }
-
-    pub fn layout(&self, line_idx_range: Range<usize>) -> Layout<'a> {
-        crate::layout(self, line_idx_range)
+    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'a> {
+        crate::blocks(self.lines(line_range), self.block_inlays)
     }
 
     pub fn selection(&self) -> &'a Selection {
@@ -259,17 +267,17 @@ impl<'a> View<'a> {
 
     fn update_summed_heights(&self) {
         let summed_heights = self.summed_heights.borrow();
-        let start_line_idx = summed_heights.len();
-        let mut summed_height = if start_line_idx == 0 {
+        let start_line_index = summed_heights.len();
+        let mut summed_height = if start_line_index == 0 {
             0.0
         } else {
-            summed_heights[start_line_idx - 1]
+            summed_heights[start_line_index - 1]
         };
         drop(summed_heights);
-        for block in self.blocks(start_line_idx..self.line_count()) {
+        for block in self.blocks(start_line_index..self.line_count()) {
             match block {
                 Block::Line(is_inlay, line) => {
-                    summed_height += line.row_count() as f64 * line.fold().scale();
+                    summed_height += line.height();
                     if !is_inlay {
                         self.summed_heights.borrow_mut().push(summed_height);
                     }
@@ -281,7 +289,7 @@ impl<'a> View<'a> {
 
 #[derive(Debug)]
 pub struct ViewMut<'a> {
-    max_col_count: &'a mut Option<usize>,
+    max_column_count: &'a mut Option<usize>,
     text: &'a mut [String],
     token_infos: &'a mut [Vec<TokenInfo>],
     inline_inlays: &'a mut [Vec<(usize, InlineInlay)>],
@@ -299,7 +307,7 @@ pub struct ViewMut<'a> {
 impl<'a> ViewMut<'a> {
     pub fn as_view(&self) -> View<'_> {
         View {
-            max_col_count: *self.max_col_count,
+            max_column_count: *self.max_column_count,
             text: &self.text,
             token_infos: &self.token_infos,
             inline_inlays: &self.inline_inlays,
@@ -314,8 +322,16 @@ impl<'a> ViewMut<'a> {
         }
     }
 
-    pub fn max_col_count(&self) -> Option<usize> {
-        self.as_view().max_col_count()
+    pub fn max_column_count(&self) -> Option<usize> {
+        self.as_view().max_column_count()
+    }
+
+    pub fn max_width(&self) -> f64 {
+        self.as_view().max_width()
+    }
+
+    pub fn height(&self) -> f64 {
+        self.as_view().height()
     }
 
     pub fn line_count(&self) -> usize {
@@ -330,69 +346,77 @@ impl<'a> ViewMut<'a> {
         self.as_view().find_first_line_starting_after_y(y)
     }
 
-    pub fn line(&self, line_idx: usize) -> Line<'_> {
-        self.as_view().line(line_idx)
+    pub fn line(&self, line_index: usize) -> Line<'_> {
+        self.as_view().line(line_index)
     }
 
-    pub fn line_summed_height(&self, line_idx: usize) -> f64 {
-        self.as_view().line_summed_height(line_idx)
+    pub fn line_summed_height(&self, line_index: usize) -> f64 {
+        self.as_view().line_summed_height(line_index)
     }
 
-    pub fn lines(&self, line_idx_range: Range<usize>) -> Lines<'_> {
-        self.as_view().lines(line_idx_range)
+    pub fn lines(&self, line_range: Range<usize>) -> Lines<'_> {
+        self.as_view().lines(line_range)
     }
 
-    pub fn blocks(&self, line_idx_range: Range<usize>) -> Blocks<'_> {
-        self.as_view().blocks(line_idx_range)
-    }
-
-    pub fn layout(&self, line_idx_range: Range<usize>) -> Layout<'_> {
-        self.as_view().layout(line_idx_range)
+    pub fn blocks(&self, line_range: Range<usize>) -> Blocks<'_> {
+        self.as_view().blocks(line_range)
     }
 
     pub fn selection(&self) -> &Selection {
         self.as_view().selection()
     }
 
-    pub fn set_max_col_count(&mut self, max_col_count: Option<usize>) {
-        if *self.max_col_count != max_col_count {
-            *self.max_col_count = max_col_count;
-            for line_idx in 0..self.line_count() {
-                self.wrap_line(line_idx);
+    pub fn set_max_column_count(&mut self, max_column_count: Option<usize>) {
+        if *self.max_column_count != max_column_count {
+            *self.max_column_count = max_column_count;
+            for line_index in 0..self.line_count() {
+                self.wrap_line(line_index);
             }
-            for &mut (line_idx, ref mut inlay) in self.block_inlays.iter_mut() {
+            for &mut (line_index, ref mut inlay) in self.block_inlays.iter_mut() {
                 let old_height = inlay.as_line().height();
-                inlay.wrap(max_col_count);
+                inlay.wrap(max_column_count);
                 let new_height = inlay.as_line().height();
                 if old_height != new_height {
-                    self.summed_heights.borrow_mut().truncate(line_idx);
+                    self.summed_heights.borrow_mut().truncate(line_index);
                 }
             }
         }
     }
 
-    pub fn fold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.unfolding.remove(&line_idx) {
+    pub fn fold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.unfolding.remove(&line_index) {
             state.scale
-        } else if !self.folded.contains(&line_idx) && !self.folding.contains_key(&line_idx) {
+        } else if !self.folded.contains(&line_index) && !self.folding.contains_key(&line_index) {
             1.0
         } else {
             return;
         };
-        self.folding.insert(line_idx, Folding { col_idx, scale });
-        self.update_line_height(line_idx);
+        self.folding.insert(
+            line_index,
+            Folding {
+                column_index,
+                scale,
+            },
+        );
+        self.update_line_height(line_index);
     }
 
-    pub fn unfold_line(&mut self, line_idx: usize, col_idx: usize) {
-        let scale = if let Some(state) = self.folding.remove(&line_idx) {
+    pub fn unfold_line(&mut self, line_index: usize, column_index: usize) {
+        let scale = if let Some(state) = self.folding.remove(&line_index) {
             state.scale
-        } else if self.folded.remove(&line_idx) {
+        } else if self.folded.remove(&line_index) {
             0.0
         } else {
             return;
         };
-        self.unfolding.insert(line_idx, Folding { col_idx, scale });
-        self.update_line_height(line_idx);
+        self.unfolding.insert(
+            line_index,
+            Folding {
+                column_index,
+                scale,
+            },
+        );
+        self.update_line_height(line_index);
     }
 
     pub fn update_folds(&mut self) -> bool {
@@ -401,63 +425,63 @@ impl<'a> ViewMut<'a> {
         if self.folding.is_empty() && self.unfolding.is_empty() {
             return false;
         }
-        for (line_idx, state) in self.folding.iter() {
+        for (line_index, state) in self.folding.iter() {
             let mut state = *state;
             state.scale *= 0.9;
-            if state.scale < 0.001 {
-                self.folded.insert(*line_idx);
+            if state.scale < 0.01 {
+                self.folded.insert(*line_index);
             } else {
-                self.tmp_folding.insert(*line_idx, state);
+                self.tmp_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.folding, self.tmp_folding);
         self.tmp_folding.clear();
-        for (line_idx, state) in self.unfolding.iter() {
+        for (line_index, state) in self.unfolding.iter() {
             let mut state = *state;
             state.scale = 1.0 - 0.9 * (1.0 - state.scale);
-            if 1.0 - state.scale > 0.001 {
-                self.tmp_folding.insert(*line_idx, state);
+            if 1.0 - state.scale > 0.01 {
+                self.tmp_folding.insert(*line_index, state);
             }
         }
         mem::swap(self.unfolding, self.tmp_folding);
         self.tmp_folding.clear();
-        for line_idx in 0..self.line_count() {
-            self.update_line_height(line_idx);
+        for line_index in 0..self.line_count() {
+            self.update_line_height(line_index);
         }
         true
     }
 
-    pub fn insert_block_inlay(&mut self, line_idx: usize, inlay: BlockInlay) {
-        let idx = match self
+    pub fn insert_block_inlay(&mut self, line_index: usize, inlay: BlockInlay) {
+        let index = match self
             .block_inlays
-            .binary_search_by_key(&line_idx, |&(line_idx, _)| line_idx)
+            .binary_search_by_key(&line_index, |&(line_index, _)| line_index)
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        self.block_inlays.insert(idx, (line_idx, inlay));
-        self.summed_heights.borrow_mut().truncate(line_idx);
+        self.block_inlays.insert(index, (line_index, inlay));
+        self.summed_heights.borrow_mut().truncate(line_index);
     }
 
-    fn wrap_line(&mut self, line_idx: usize) {
+    fn wrap_line(&mut self, line_index: usize) {
         use crate::wrap;
 
-        self.breaks[line_idx] = Vec::new();
-        self.breaks[line_idx] = if let &mut Some(max_col_count) = self.max_col_count {
-            wrap::wrap(self.line(line_idx), max_col_count)
+        self.breaks[line_index] = Vec::new();
+        self.breaks[line_index] = if let &mut Some(max_column_count) = self.max_column_count {
+            wrap::wrap(self.line(line_index), max_column_count)
         } else {
             Vec::new()
         };
-        self.update_line_height(line_idx);
+        self.update_line_height(line_index);
     }
 
-    fn update_line_height(&mut self, line_idx: usize) {
-        let old_height = self.heights[line_idx];
-        let line = self.line(line_idx);
-        let new_height = line.fold().scale() * line.row_count() as f64;
-        self.heights[line_idx] = new_height;
+    fn update_line_height(&mut self, line_index: usize) {
+        let old_height = self.heights[line_index];
+        let line = self.line(line_index);
+        let new_height = line.fold().height(line.row_count());
+        self.heights[line_index] = new_height;
         if old_height != new_height {
-            self.summed_heights.borrow_mut().truncate(line_idx);
+            self.summed_heights.borrow_mut().truncate(line_index);
         }
     }
 
@@ -468,7 +492,11 @@ impl<'a> ViewMut<'a> {
         selection.modify_all_regions(|region| {
             let cursor = f(region.cursor);
             Region {
-                anchor: if select { region.anchor } else { cursor.pos },
+                anchor: if select {
+                    region.anchor
+                } else {
+                    cursor.position
+                },
                 cursor,
             }
         });
@@ -478,7 +506,7 @@ impl<'a> ViewMut<'a> {
 
 #[derive(Debug)]
 struct Session {
-    max_col_count: Option<usize>,
+    max_column_count: Option<usize>,
     document_id: Id<Document>,
     inline_inlays: Vec<Vec<(usize, InlineInlay)>>,
     breaks: Vec<Vec<usize>>,

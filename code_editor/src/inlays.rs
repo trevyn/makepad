@@ -31,12 +31,12 @@ impl BlockInlay {
         )
     }
 
-    pub fn wrap(&mut self, wrap_col_idx: Option<usize>) {
+    pub fn wrap(&mut self, wrap_column_index: Option<usize>) {
         use crate::wrap;
 
         self.wraps = Vec::new();
-        self.wraps = if let Some(wrap_col_idx) = wrap_col_idx {
-            wrap::wrap(self.as_line(), wrap_col_idx)
+        self.wraps = if let Some(wrap_column_index) = wrap_column_index {
+            wrap::wrap(self.as_line(), wrap_column_index)
         } else {
             Vec::new()
         };

@@ -10,8 +10,8 @@ pub struct Inlines<'a> {
     wraps: Iter<'a, usize>,
     token: Option<Token<'a>>,
     inlay_tokens: Option<Tokens<'a>>,
-    byte_idx: usize,
-    inlay_byte_idx: usize,
+    byte_index: usize,
+    inlay_byte_index: usize,
 }
 
 impl<'a> Iterator for Inlines<'a> {
@@ -19,20 +19,20 @@ impl<'a> Iterator for Inlines<'a> {
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(inlay_offset) = self.wraps.as_slice().first() {
-            if *inlay_offset == self.inlay_byte_idx {
+            if *inlay_offset == self.inlay_byte_index {
                 self.wraps.next().unwrap();
                 return Some(Inline::Wrap);
             }
         }
         if let Some((offset, _)) = self.inlays.as_slice().first() {
-            if *offset == self.byte_idx {
+            if *offset == self.byte_index {
                 let (_, inlay) = self.inlays.next().unwrap();
                 self.inlay_tokens = Some(inlay.tokens());
             }
         }
         if let Some(tokens) = &mut self.inlay_tokens {
             if let Some(token) = tokens.next() {
-                self.inlay_byte_idx += token.text.len();
+                self.inlay_byte_index += token.text.len();
                 return Some(Inline::Token(true, token));
             }
             self.inlay_tokens = None;
@@ -40,7 +40,7 @@ impl<'a> Iterator for Inlines<'a> {
         let token = self.token?;
         let mut len = token.text.len();
         if let Some((offset, _)) = self.inlays.as_slice().first() {
-            len = len.min(offset - self.byte_idx);
+            len = len.min(offset - self.byte_index);
         }
         let token = if len < token.text.len() {
             let (text_0, text_1) = token.text.split_at(len);
@@ -56,8 +56,8 @@ impl<'a> Iterator for Inlines<'a> {
             self.token = self.tokens.next();
             token
         };
-        self.byte_idx += token.text.len();
-        self.inlay_byte_idx += token.text.len();
+        self.byte_index += token.text.len();
+        self.inlay_byte_index += token.text.len();
         Some(Inline::Token(false, token))
     }
 }
@@ -68,6 +68,16 @@ pub enum Inline<'a> {
     Wrap,
 }
 
+impl<'a> Inline<'a> {
+    pub fn column_count(&self) -> usize {
+        use crate::str::StrExt;
+
+        match self {
+            Self::Token(_, token) => token.text.column_count(),
+            Self::Wrap => 0,
+        }
+    }
+}
 pub fn inlines<'a>(
     mut tokens: Tokens<'a>,
     inlays: &'a [(usize, InlineInlay)],
@@ -80,7 +90,7 @@ pub fn inlines<'a>(
         wraps: wraps.iter(),
         token,
         inlay_tokens: None,
-        byte_idx: 0,
-        inlay_byte_idx: 0,
+        byte_index: 0,
+        inlay_byte_index: 0,
     }
 }

@@ -1,7 +1,7 @@
 use {
     crate::{
-        pos::{Affinity, PosWithAffinity},
-        Pos,
+        position::{Bias, BiasedPosition},
+        Position,
     },
     std::slice,
 };
@@ -38,32 +38,33 @@ impl Selection {
     }
 
     fn normalize_latest_region(&mut self) {
-        let mut idx = match self
+        let mut index = match self
             .earlier_regions
             .binary_search_by_key(&self.latest_region.start(), |region| region.start())
         {
-            Ok(idx) => idx,
-            Err(idx) => idx,
+            Ok(index) => index,
+            Err(index) => index,
         };
-        while idx > 0 {
-            let prev_idx = idx - 1;
+        while index > 0 {
+            let prev_index = index - 1;
             if let Some(merged_region) = self
                 .latest_region
-                .try_merge_with(self.earlier_regions[prev_idx])
+                .try_merge_with(self.earlier_regions[prev_index])
             {
                 self.latest_region = merged_region;
-                self.earlier_regions.remove(prev_idx);
-                idx = prev_idx;
+                self.earlier_regions.remove(prev_index);
+                index = prev_index;
             } else {
                 break;
             }
         }
-        while idx < self.earlier_regions.len() {
-            if let Some(merged_region) =
-                self.latest_region.try_merge_with(self.earlier_regions[idx])
+        while index < self.earlier_regions.len() {
+            if let Some(merged_region) = self
+                .latest_region
+                .try_merge_with(self.earlier_regions[index])
             {
                 self.latest_region = merged_region;
-                self.earlier_regions.remove(idx);
+                self.earlier_regions.remove(index);
             } else {
                 break;
             }
@@ -75,15 +76,15 @@ impl Selection {
             return;
         }
         self.earlier_regions.sort_by_key(|region| region.start());
-        let mut idx = 0;
-        while idx + 1 < self.earlier_regions.len() {
+        let mut index = 0;
+        while index + 1 < self.earlier_regions.len() {
             if let Some(merged_region) =
-                self.earlier_regions[idx].try_merge_with(self.earlier_regions[idx + 1])
+                self.earlier_regions[index].try_merge_with(self.earlier_regions[index + 1])
             {
-                self.earlier_regions[idx] = merged_region;
-                self.earlier_regions.remove(idx + 1);
+                self.earlier_regions[index] = merged_region;
+                self.earlier_regions.remove(index + 1);
             } else {
-                idx += 1;
+                index += 1;
             }
         }
     }
@@ -93,41 +94,41 @@ impl Default for Selection {
     fn default() -> Self {
         Self {
             latest_region: Region {
-                anchor: PosWithAffinity {
-                    pos: Pos {
-                        line_idx: 6,
-                        byte_idx: 20,
+                anchor: BiasedPosition {
+                    position: Position {
+                        line_index: 6,
+                        byte_index: 20,
                     },
-                    affinity: Affinity::Before,
+                    bias: Bias::Before,
                 },
                 cursor: Cursor {
-                    pos: PosWithAffinity {
-                        pos: Pos {
-                            line_idx: 11,
-                            byte_idx: 20,
+                    position: BiasedPosition {
+                        position: Position {
+                            line_index: 11,
+                            byte_index: 20,
                         },
-                        affinity: Affinity::After,
+                        bias: Bias::After,
                     },
-                    col_idx: None,
+                    column_index: None,
                 },
             },
             earlier_regions: vec![Region {
-                anchor: PosWithAffinity {
-                    pos: Pos {
-                        line_idx: 11,
-                        byte_idx: 40,
+                anchor: BiasedPosition {
+                    position: Position {
+                        line_index: 11,
+                        byte_index: 40,
                     },
-                    affinity: Affinity::Before,
+                    bias: Bias::Before,
                 },
                 cursor: Cursor {
-                    pos: PosWithAffinity {
-                        pos: Pos {
-                            line_idx: 17,
-                            byte_idx: 10,
+                    position: BiasedPosition {
+                        position: Position {
+                            line_index: 17,
+                            byte_index: 10,
                         },
-                        affinity: Affinity::After,
+                        bias: Bias::After,
                     },
-                    col_idx: None,
+                    column_index: None,
                 },
             }],
         }
@@ -171,21 +172,21 @@ impl<'a> Iterator for Iter<'a> {
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Region {
-    pub anchor: PosWithAffinity,
+    pub anchor: BiasedPosition,
     pub cursor: Cursor,
 }
 
 impl Region {
     pub fn is_empty(self) -> bool {
-        self.anchor.pos == self.cursor.pos.pos
+        self.anchor == self.cursor.position
     }
 
-    pub fn start(self) -> PosWithAffinity {
-        self.anchor.min(self.cursor.pos)
+    pub fn start(self) -> BiasedPosition {
+        self.anchor.min(self.cursor.position)
     }
 
-    pub fn end(self) -> PosWithAffinity {
-        self.anchor.max(self.cursor.pos)
+    pub fn end(self) -> BiasedPosition {
+        self.anchor.max(self.cursor.position)
     }
 
     pub fn try_merge_with(self, other: Self) -> Option<Self> {
@@ -197,25 +198,33 @@ impl Region {
             mem::swap(&mut first, &mut second);
         }
         match (
-            first.anchor.pos == first.cursor.pos.pos,
-            second.anchor.pos == second.cursor.pos.pos,
+            first.anchor.position == first.cursor.position.position,
+            second.anchor.position == second.cursor.position.position,
         ) {
-            (true, true) if first.cursor.pos.pos == second.cursor.pos.pos => Some(self),
-            (false, true) if first.end().pos >= second.cursor.pos.pos => Some(first),
-            (true, false) if first.cursor.pos.pos == second.start().pos => Some(second),
-            (false, false) if first.end().pos > second.start().pos => {
-                Some(match self.anchor.pos.cmp(&self.cursor.pos.pos) {
+            (true, true) if first.cursor.position.position == second.cursor.position.position => {
+                Some(self)
+            }
+            (false, true) if first.end().position >= second.cursor.position.position => Some(first),
+            (true, false) if first.cursor.position.position == second.start().position => {
+                Some(second)
+            }
+            (false, false) if first.end().position > second.start().position => Some(
+                match self.anchor.position.cmp(&self.cursor.position.position) {
                     Ordering::Less => Self {
                         anchor: self.anchor.min(other.anchor),
-                        cursor: cmp::max_by_key(self.cursor, other.cursor, |cursor| cursor.pos),
+                        cursor: cmp::max_by_key(self.cursor, other.cursor, |cursor| {
+                            cursor.position
+                        }),
                     },
                     Ordering::Greater => Self {
                         anchor: self.anchor.max(other.anchor),
-                        cursor: cmp::min_by_key(self.cursor, other.cursor, |cursor| cursor.pos),
+                        cursor: cmp::min_by_key(self.cursor, other.cursor, |cursor| {
+                            cursor.position
+                        }),
                     },
                     Ordering::Equal => unreachable!(),
-                })
-            }
+                },
+            ),
             _ => None,
         }
     }
@@ -223,6 +232,6 @@ impl Region {
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub struct Cursor {
-    pub pos: PosWithAffinity,
-    pub col_idx: Option<usize>,
+    pub position: BiasedPosition,
+    pub column_index: Option<usize>,
 }
